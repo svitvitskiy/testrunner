@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.URL;
 import java.util.List;
+import java.util.ListIterator;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -34,31 +35,44 @@ public class BalancingStatusPage implements BaseAgent.Handler {
                 IOUtils.copy(is, response.getOutputStream());
             }
         } else {
-            try (InputStream is = this.getClass().getClassLoader()
-                    .getResourceAsStream("testrunner/balancingstatus.html")) {
-                String templ = IOUtils.toString(is);
-
-                StringBuilder sb = new StringBuilder();
-                List<BaseJob> tmp = BaseAgent.safeCopy(jobs);
-                sb.append("<table class=\"delegates\" cellpadding=\"0\" cellspacing=\"0\">");
-                int i = 0;
-                for (AgentConnection agentConnection : safeCopy) {
-                    sb.append("<tr><td>Url</td><td><a href=\"/proxy/" + i + "\">" + agentConnection.getUrl()
-                            + "</a></td></tr>");
-                    sb.append("<tr><td>Available CPU</td><td>" + agentConnection.getAvailableCPU() + "</td></tr>");
-                    sb.append("<tr><td>Total running jobs</td><td>" + agentConnection.getTotalRunningJobs()
-                            + "</td></tr>");
-                    sb.append("<tr><td>Online</td><td>" + agentConnection.isOnline() + "</td></tr>");
-                    sb.append("<tr><td colspan=\"2\">");
-                    jobList(sb, tmp, agentConnection.getUrl());
-                    sb.append("</td></tr>");
-                    ++i;
+            String action = request.getParameter("action");
+            if ("wipejobs".equals(action)) {
+                synchronized (jobs) {
+                    for (ListIterator<BaseJob> it = jobs.listIterator(); it.hasNext();) {
+                        BaseJob baseJob = it.next();
+                        if (baseJob.getStatus() == BaseJob.Status.DONE)
+                            it.remove();
+                    }
                 }
-                sb.append("</table>");
-                unscheduled(sb, tmp);
-                templ = templ.replace("|||BODY|||", sb.toString());
+            } else if ("restart".equals(action)) {
+                System.exit(0);
+            } else {
+                try (InputStream is = this.getClass().getClassLoader()
+                        .getResourceAsStream("testrunner/balancingstatus.html")) {
+                    String templ = IOUtils.toString(is);
 
-                new PrintStream(response.getOutputStream()).print(templ);
+                    StringBuilder sb = new StringBuilder();
+                    List<BaseJob> tmp = BaseAgent.safeCopy(jobs);
+                    sb.append("<table class=\"delegates\" cellpadding=\"0\" cellspacing=\"0\">");
+                    int i = 0;
+                    for (AgentConnection agentConnection : safeCopy) {
+                        sb.append("<tr><td>Url</td><td><a href=\"/proxy/" + i + "\">" + agentConnection.getUrl()
+                                + "</a></td></tr>");
+                        sb.append("<tr><td>Available CPU</td><td>" + agentConnection.getAvailableCPU() + "</td></tr>");
+                        sb.append("<tr><td>Total running jobs</td><td>" + agentConnection.getTotalRunningJobs()
+                                + "</td></tr>");
+                        sb.append("<tr><td>Online</td><td>" + agentConnection.isOnline() + "</td></tr>");
+                        sb.append("<tr><td colspan=\"2\">");
+                        jobList(sb, tmp, agentConnection.getUrl());
+                        sb.append("</td></tr>");
+                        ++i;
+                    }
+                    sb.append("</table>");
+                    unscheduled(sb, tmp);
+                    templ = templ.replace("|||BODY|||", sb.toString());
+
+                    new PrintStream(response.getOutputStream()).print(templ);
+                }
             }
         }
     }

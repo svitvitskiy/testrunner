@@ -67,7 +67,12 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         if (bestCapacity > 0 && bestDelegate != null) {
             File file = files.get(job.getJobArchiveRef());
             tmp.remove(bestDelegate);
-            RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(job.getName(), job.getJobArchiveRef(), getJobManifest(file), myUrl);
+            String jobManifest = getJobManifest(file);
+            if (jobManifest == null) {
+                System.out.println("ERROR: [" + job.getName() + "] Couldn't schedule, job has not manifest.json.");
+                return null;
+            }
+            RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(job.getName(), job.getJobArchiveRef(), jobManifest, myUrl);
             bestDelegate.updateAvailableCPU(0);
             return scheduleJob;
         }

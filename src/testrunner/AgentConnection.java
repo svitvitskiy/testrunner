@@ -104,7 +104,7 @@ public class AgentConnection {
     public String getUrl() {
         return url;
     }
-    
+
     public boolean isOnline() {
         return online;
     }
@@ -117,11 +117,13 @@ public class AgentConnection {
         String fileid = uploadJobArchive(jobArchive);
         System.out.println("INFO: [" + name + "] file id:" + fileid);
         RemoteJob job = scheduleJob(name, fileid);
-        
-        synchronized (jobs) {
-            jobs.add(job);
+
+        if (job != null) {
+            synchronized (jobs) {
+                jobs.add(job);
+            }
         }
-        
+
         return job;
     }
 
@@ -149,19 +151,22 @@ public class AgentConnection {
         }
         return new RemoteJob(name, url);
     }
-    
-    public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, String manifest, String myUrl) throws IOException {
+
+    public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, String manifest, String myUrl)
+            throws IOException {
         HttpClient httpclient = new DefaultHttpClient();
         HttpPost httpPost = new HttpPost(new URL(new URL(url), "/new").toExternalForm());
 
         String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
                 + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest + "}";
         RemoteJob job = doScheduleJobArchive(name, httpclient, httpPost, json);
-        
-        synchronized (jobs) {
-            jobs.add(job);
+
+        if (job != null) {
+            synchronized (jobs) {
+                jobs.add(job);
+            }
         }
-        
+
         return job;
     }
 
@@ -186,7 +191,7 @@ public class AgentConnection {
         return null;
     }
 
-    public static void main1(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws IOException, InterruptedException {
         if (args.length < 3) {
             System.out.println("Syntax: agentconnection <agent url> <job zip> <output zip>");
             return;
@@ -198,6 +203,10 @@ public class AgentConnection {
         AgentConnection agent = new AgentConnection(agentUrl, executor2);
         agent.scheduleStatusCheck();
         RemoteJob job = agent.scheduleJob(jobArchive.getName().replaceAll("\\.zip$", ""), jobArchive);
+        if (job == null) {
+            System.out.println("Couldn't schedule a job");
+            return;
+        }
         job.waitDone();
         System.out.println("[" + job.getName() + "] Job finished: " + job.getStatus());
         System.out.println("[" + job.getName() + "] Result archive: " + job.getResultArchiveRef());
@@ -205,7 +214,7 @@ public class AgentConnection {
         job.getResultArchive().renameTo(new File(args[2]));
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main1(String[] args) throws IOException, InterruptedException {
         if (args.length < 2) {
             System.out.println("Syntax: agentconnection <agent url> <job zip>");
             return;
@@ -221,7 +230,11 @@ public class AgentConnection {
         for (int i = 0; i < 200; i++) {
             String jobName = jobArchive.getName().replaceAll("\\.zip$", "");
             String newName = jobName + "_" + i;
-            jobs.add(agent.scheduleJob(newName, jobArchive));
+            RemoteJob job = agent.scheduleJob(newName, jobArchive);
+            if (job == null) {
+                System.out.println("Couldn't schedule a job '" + jobName + "'");
+            }
+            jobs.add(job);
         }
         for (RemoteJob job : jobs) {
             System.out.println("INFO: [" + job.getName() + "] Waiting for job: " + job.getStatus());

@@ -1,5 +1,6 @@
 package testrunner;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
@@ -69,8 +70,14 @@ public class NewJobHandler implements BaseAgent.Handler {
         BaseJob newJob;
         if (jsonElement1 != null) {
             String jobArchiveRef = jsonElement1.getAsString();
-            if (!files.has(jobArchiveRef))
-                return false;
+            if (!files.has(jobArchiveRef)) {
+                throw new IllegalArgumentException("Could could not start the job '" + jobName + "' job archive '"
+                        + jobArchiveRef + "'not found.");
+            }
+            if (!checkManifest(files.get(jobArchiveRef))) {
+                throw new IllegalArgumentException(
+                        "Could could not start the job '" + jobName + "' no manifest.json found.");
+            }
             newJob = factory.newJob(jobName, jobArchiveRef);
         } else if (jsonElement2 != null) {
             JsonElement jsonElement3 = jsonObject.get("remoteUrl");
@@ -95,6 +102,10 @@ public class NewJobHandler implements BaseAgent.Handler {
             jobs.add(newJob);
         }
         return true;
+    }
+
+    private boolean checkManifest(File file) throws IOException {
+        return ZipUtils.getFileAsString(file, "manifest.json") != null;
     }
 
     private boolean nameClash(String jobName) {
