@@ -78,13 +78,19 @@ public class BalancingStatusPage implements BaseAgent.Handler {
     }
 
     private void unscheduled(StringBuilder sb, List<BaseJob> tmp) {
-        sb.append("Unscheduled jobs: ");
-        for (BaseJob baseJob : tmp) {
-            BalancingJob bj = (BalancingJob) baseJob;
-            if (bj.getDelegate() != null)
-                continue;
-            sb.append(baseJob.getName() + ", ");
+        sb.append("<table>");
+        sb.append("<tr><td colspan=\"6\">Unscheduled jobs: </td></tr>");
+        for (int i = 0; i < tmp.size(); i += 6) {
+            sb.append("<tr>");
+            for (int j = 0; j < Math.min(tmp.size() - i, 6); j++) {
+                BalancingJob bj = (BalancingJob) tmp.get(i + j);
+                if (bj.getDelegate() != null)
+                    continue;
+                sb.append("<td>" + bj.getName() + "</td>");
+            }
+            sb.append("</tr>");
         }
+        sb.append("</table>");
     }
 
     private void jobList(StringBuilder sb, List<BaseJob> tmp, String agentUrl) {

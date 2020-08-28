@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -72,7 +71,8 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 System.out.println("ERROR: [" + job.getName() + "] Couldn't schedule, job has not manifest.json.");
                 return null;
             }
-            RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(job.getName(), job.getJobArchiveRef(), jobManifest, myUrl);
+            RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(job.getName(), job.getJobArchiveRef(), jobManifest,
+                    myUrl);
             bestDelegate.updateAvailableCPU(0);
             return scheduleJob;
         }
@@ -137,11 +137,13 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                     String resultArchiveRef = files.addAsFile(f);
                     bj.updateResultArchiveRef(resultArchiveRef);
                     bj.updateStatus(BaseJob.Status.DONE);
-                    bj.setDownloading(false);
+                    System.out.println("INFO: [" + bj.getName() + "] Deleting file '" + bj.getJobArchiveRef() + "'.");
+                    files.delete(bj.getJobArchiveRef());
                 } catch (Exception e) {
                     System.out.println("ERROR: [" + bj.getName() + "] couldn't update the job status to DONE.");
                     e.printStackTrace();
                 }
+                bj.setDownloading(false);
             }
         });
     }

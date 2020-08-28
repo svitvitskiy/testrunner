@@ -21,11 +21,17 @@ public class DownloadHandler implements BaseAgent.Handler {
             return;
         String pathInfo = request.getPathInfo();
         String id = pathInfo.replaceAll("^/download/", "");
+        String option = request.getParameter("option");
+
         if (!files.has(id)) {
             response.setStatus(404);
         } else {
             response.setStatus(200);
             FileUtils.copyFile(files.get(id), response.getOutputStream());
+            if ("delete".equals(option)) {
+                System.out.println("INFO: Deleting file '" + id + "'");
+                files.delete(id);
+            }
         }
     }
 }

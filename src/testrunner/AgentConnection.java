@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.http.HttpResponse;
@@ -36,6 +37,7 @@ public class AgentConnection {
     private List<RemoteJob> jobs;
     private int totalJobs;
     private int totalRunningJobs;
+    private ScheduledFuture<?> future;
 
     public AgentConnection(String url, ScheduledExecutorService executor) {
         this.url = url;
@@ -44,7 +46,7 @@ public class AgentConnection {
     }
 
     public void scheduleStatusCheck() {
-        executor.scheduleAtFixedRate(new Runnable() {
+        future = executor.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -57,6 +59,11 @@ public class AgentConnection {
             }
 
         }, 0, 1, TimeUnit.SECONDS);
+    }
+
+    public void shutdown() {
+        if (future != null)
+            future.cancel(false);
     }
 
     private void updateJobStatus() throws MalformedURLException, IOException {
@@ -212,38 +219,5 @@ public class AgentConnection {
         System.out.println("[" + job.getName() + "] Result archive: " + job.getResultArchiveRef());
         executor2.shutdown();
         job.getResultArchive().renameTo(new File(args[2]));
-    }
-
-    public static void main1(String[] args) throws IOException, InterruptedException {
-        if (args.length < 2) {
-            System.out.println("Syntax: agentconnection <agent url> <job zip>");
-            return;
-        }
-        ScheduledExecutorService executor2 = Executors.newScheduledThreadPool(1);
-        String agentUrl = args[0];
-        File jobArchive = new File(args[1]);
-
-        AgentConnection agent = new AgentConnection(agentUrl, executor2);
-        agent.scheduleStatusCheck();
-
-        List<RemoteJob> jobs = new ArrayList<RemoteJob>();
-        for (int i = 0; i < 200; i++) {
-            String jobName = jobArchive.getName().replaceAll("\\.zip$", "");
-            String newName = jobName + "_" + i;
-            RemoteJob job = agent.scheduleJob(newName, jobArchive);
-            if (job == null) {
-                System.out.println("Couldn't schedule a job '" + jobName + "'");
-            }
-            jobs.add(job);
-        }
-        for (RemoteJob job : jobs) {
-            System.out.println("INFO: [" + job.getName() + "] Waiting for job: " + job.getStatus());
-            job.waitDone();
-            System.out.println("INFO: [" + job.getName() + "] Job finished: " + job.getStatus());
-            System.out.println("INFO: [" + job.getName() + "] Result archive ref: " + job.getResultArchiveRef());
-            System.out.println(
-                    "INFO: [" + job.getName() + "] Result archive: " + job.getResultArchive().getAbsolutePath());
-        }
-        executor2.shutdown();
     }
 }

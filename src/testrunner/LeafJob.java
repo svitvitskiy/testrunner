@@ -95,6 +95,11 @@ public class LeafJob extends BaseJob {
         ZipUtils.compressDir(jobBase, tmp);
         updateResultArchiveRef(files.addAsFile(tmp));
         tmp.delete();
+
+        // Deleting the input file
+        System.out.println("INFO: [" + getName() + "] Deleting job archive '" + getJobArchiveRef() + "'.");
+        files.delete(getJobArchiveRef());
+
         System.out.println("INFO: [" + getName() + "] Finished job.");
     }
 

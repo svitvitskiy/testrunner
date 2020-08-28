@@ -5,11 +5,12 @@ import java.util.Arrays;
 public class TestRunnerMain {
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("Syntax: testrunner <command> ...\n" +
-                    "  where command is:\n" +
-                    "    leaf         For leaf agent\n" +
-                    "    balancer     For balancer agent\n" +
-                    "    client       For client interface\n");
+            System.err.println("Syntax: testrunner <command> ...\n" 
+                    + "  where command is:\n"
+                    + "    leaf         For leaf agent\n" 
+                    + "    balancer     For balancer agent\n"
+                    + "    client       For client interface\n" 
+                    + "    scheduler    Test scheduler\n");
             return;
         }
         String command = args[0];
@@ -20,6 +21,8 @@ public class TestRunnerMain {
             BalancingAgent.main(newArgs);
         } else if ("client".equals(command)) {
             AgentConnection.main(newArgs);
+        } else if ("scheduler".equals(command)) {
+            TestScheduler.main(newArgs);
         } else {
             System.err.println("Unknown command: '" + command + "'");
         }
