@@ -240,7 +240,7 @@ public class CompareScheduler implements TestScheduler {
         } catch (Exception e) {
             System.out.println(
                     PREFIX_ERROR + "[" + jobRequest.getJobName() + "] Couldn't process the job result." + SUFFIX_CLEAR);
-            e.printStackTrace();
+            e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, 0, 0);
         }
     }
@@ -282,7 +282,7 @@ public class CompareScheduler implements TestScheduler {
         } catch (IOException e) {
             System.out.println(PREFIX_ERROR + "Could not create a job archive for job '" + jobRequest.getJobName()
                     + "'." + SUFFIX_CLEAR);
-            e.printStackTrace();
+            e.printStackTrace(System.out);
         }
     }
 
@@ -292,7 +292,7 @@ public class CompareScheduler implements TestScheduler {
         File reportFile = new File(baseFldr, "report.html");
         List<String> strings0 = new ArrayList<String>();
         List<String> strings1 = new ArrayList<String>();
-        for (TestScheduler.JobResult jr : results) {
+        for (TestScheduler.JobResult jr : Util.copy(results)) {
             if (!jr.isValid()) {
                 System.out.println(PREFIX_WARN + "[" + jr.getJobRequest().getJobName()
                         + "] Didn't have the result, skipping." + SUFFIX_CLEAR);
@@ -300,15 +300,10 @@ public class CompareScheduler implements TestScheduler {
                 String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
                 System.out.println(PREFIX_WARN + "    "
                         + String.join(SUFFIX_CLEAR + "\n" + PREFIX_WARN + "    ", copyOfRange) + SUFFIX_CLEAR);
-                removeCounterPart(jr, results);
+                removeAllSimilar(jr, results);
             }
         }
-        for (ListIterator<TestScheduler.JobResult> it = results.listIterator(); it.hasNext();) {
-            TestScheduler.JobResult jr = it.next();
-            if (!jr.isValid()) {
-                it.remove();
-            }
-        }
+        
         for (TestScheduler.JobResult jr_ : results) {
             JobResult jr = (JobResult) jr_;
             JobRequest jobRequest = (JobRequest) jr.getJobRequest();
@@ -345,12 +340,13 @@ public class CompareScheduler implements TestScheduler {
         }
     }
 
-    private void removeCounterPart(TestScheduler.JobResult jr, List<TestScheduler.JobResult> results) {
+    private void removeAllSimilar(TestScheduler.JobResult jr, List<TestScheduler.JobResult> results) {
         JobRequest jreq0 = (JobRequest) jr.getJobRequest();
-        for (TestScheduler.JobResult jobResult : results) {
+        for (ListIterator<TestScheduler.JobResult> it = results.listIterator(); it.hasNext();) {
+            TestScheduler.JobResult jobResult = it.next();
             JobRequest jreq1 = (JobRequest) jobResult.getJobRequest();
             if (jreq0.getStream().equals(jreq1.getStream()) && jreq0.getQp() == jreq1.getQp()) {
-                ((JobResult) jobResult).updateValid(false);
+                it.remove();
             }
         }
     }

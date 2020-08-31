@@ -18,14 +18,19 @@ public class RemoteJob {
     private String name;
     private BaseJob.Status status;
     private String resultArchiveRef;
-    private String agentUrl;
     private File resultArchive;
     private Callable doneCallback;
     private Object callbackResult;
+    private AgentConnection agent;
+    private String jobArchiveRef;
+    private String manifest;
+    private String remoteUrl;
+    private int retryCounter;
+    private File jobArchive;
 
-    public RemoteJob(String name, String url) {
+    public RemoteJob(String name, AgentConnection agent) {
         this.name = name;
-        this.agentUrl = url;
+        this.agent = agent;
         this.status = Status.NEW;
     }
 
@@ -43,8 +48,8 @@ public class RemoteJob {
         return name;
     }
 
-    public String getAgentUrl() {
-        return agentUrl;
+    public AgentConnection getAgent() {
+        return agent;
     }
 
     public void updateStatus(String status) {
@@ -64,7 +69,7 @@ public class RemoteJob {
                 callbackResult = doneCallback.call();
                 System.out.println("  DEBUG [" + name + "] Callback done");
             } catch (Exception e) {
-                e.printStackTrace();
+                e.printStackTrace(System.out);
             }
         }
 
@@ -85,9 +90,9 @@ public class RemoteJob {
         if (resultArchive != null)
             return resultArchive;
         File temp = File.createTempFile("stan", "cool");
-        URL downloadUrl = new URL(new URL(agentUrl), "/download/" + resultArchiveRef + "?option=delete");
+        URL downloadUrl = new URL(new URL(agent.getUrl()), "/download/" + resultArchiveRef + "?option=delete");
         System.out.println("INFO: [" + name + "] Downloading result from '" + downloadUrl.toExternalForm() + "'");
-        try (InputStream is = downloadUrl.openStream()) {
+        try (InputStream is = Util.openUrlStream(downloadUrl, 1000, 3000)) {
             FileUtils.copyInputStreamToFile(is, temp);
         }
         resultArchive = temp;
@@ -130,5 +135,55 @@ public class RemoteJob {
                 throw new RuntimeException("Not implemented");
             }
         };
+    }
+
+    public void updateJobArchiveRef(String jobArchiveRef) {
+        this.jobArchiveRef = jobArchiveRef;
+    }
+
+    public void updateManifest(String manifest) {
+        this.manifest = manifest;
+    }
+
+    public void updateRemoteUrl(String remoteUrl) {
+        this.remoteUrl = remoteUrl;
+    }
+
+    public String getJobArchiveRef() {
+        return jobArchiveRef;
+    }
+
+    public String getManifest() {
+        return manifest;
+    }
+
+    public String getRemoteUrl() {
+        return remoteUrl;
+    }
+
+    public void incrementRetryCounter() {
+        ++ retryCounter;
+    }
+
+    public int getRetryCounter() {
+        return retryCounter;
+    }
+
+    public void resetRetryCounter() {
+        retryCounter = 0;
+    }
+
+    public void updateJobArchive(File jobArchive) {
+        this.jobArchive = jobArchive;
+        
+    }
+    
+    public File getJobArchive() {
+        return jobArchive;
+    }
+
+    public void setStatus(Status new1) {
+        this.status = new1;
+        
     }
 }

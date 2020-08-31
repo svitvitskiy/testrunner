@@ -3,6 +3,8 @@ package testrunner;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.ListIterator;
 
@@ -13,9 +15,11 @@ import org.apache.commons.io.IOUtils;
 
 public class LeafStatusPage implements BaseAgent.Handler {
     private List<BaseJob> jobs;
+    private long startTime;
 
-    public LeafStatusPage(List<BaseJob> jobs) {
+    public LeafStatusPage(List<BaseJob> jobs, long startTime) {
         this.jobs = jobs;
+        this.startTime = startTime;
     }
 
     @Override
@@ -36,7 +40,9 @@ public class LeafStatusPage implements BaseAgent.Handler {
                 String templ = IOUtils.toString(is);
 
                 StringBuilder sb = new StringBuilder();
-                List<BaseJob> tmp = BaseAgent.safeCopy(jobs);
+                List<BaseJob> tmp = Util.safeCopy(jobs);
+                sb.append("<div>Start time: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ").format(new Date(startTime))
+                        + "</div>");
                 sb.append("<table class=\"jobs\" cellpadding=\"0\" cellspacing=\"0\">");
                 sb.append("<tr><td>Name</td><td>Status</td><td>Job archive</td><td>Result archive</td></tr>");
                 for (BaseJob baseJob : tmp) {

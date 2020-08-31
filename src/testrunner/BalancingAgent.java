@@ -29,6 +29,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     private FileStore files;
     private List<String> delegateUrls;
     private String myUrl;
+    private long startTime;
 
     public BalancingAgent(File agentBase, List<String> delegateUrls, String myUrl) {
         this.myUrl = myUrl;
@@ -36,27 +37,33 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         this.executor = Executors.newScheduledThreadPool(Math.min(64, nThreads * 8));
         files = new FileStore(new File(agentBase, "store"));
         this.delegateUrls = delegateUrls;
+        this.startTime = System.currentTimeMillis();
     }
 
     private void doBalancing() throws IOException {
-        List<AgentConnection> tmp = safeCopy(delegates);
-        for (BaseJob baseJob : safeCopy(jobs)) {
+        List<AgentConnection> tmp = Util.safeCopy(delegates);
+        List<BaseJob> safeCopy = Util.safeCopy(jobs);
+        System.out.println("    DEBUG: Trying to balance " + safeCopy.size() + " jobs.");
+        for (BaseJob baseJob : safeCopy) {
             BalancingJob bj = (BalancingJob) baseJob;
             if (!bj.hasDelegate()) {
                 RemoteJob remoteJob = tryDelegate(bj, tmp);
                 if (remoteJob != null) {
                     bj.updateDelegate(remoteJob);
                     System.out.println("INFO: [" + bj.getName() + "] Scheduled job with remote agent '"
-                            + remoteJob.getAgentUrl() + "'.");
+                            + remoteJob.getAgent().getUrl() + "'.");
                 }
             }
         }
     }
 
     private RemoteJob tryDelegate(BalancingJob job, List<AgentConnection> tmp) throws IOException {
+        System.out.println("    DEBUG: [" + job.getName() + "] Trying to balance");
         int bestCapacity = 0;
         AgentConnection bestDelegate = null;
         for (AgentConnection delegate : tmp) {
+            if (!delegate.isOnline())
+                continue;
             int capacity = delegate.getAvailableCPU();
             if (capacity > bestCapacity) {
                 bestCapacity = capacity;
@@ -71,8 +78,11 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 System.out.println("ERROR: [" + job.getName() + "] Couldn't schedule, job has not manifest.json.");
                 return null;
             }
-            RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(job.getName(), job.getJobArchiveRef(), jobManifest,
-                    myUrl);
+            RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(
+                    job.getName() + String.format("_bal%06d", (int)(Math.random() * 1000000)), job.getJobArchiveRef(),
+                    jobManifest, myUrl);
+            System.out
+                    .println("    DEBUG: [" + job.getName() + "] " + (scheduleJob == null ? "is null" : "is not null"));
             bestDelegate.updateAvailableCPU(0);
             return scheduleJob;
         }
@@ -88,11 +98,11 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             if (hasDelegate(url))
                 continue;
             System.out.println("DEBUG: trying delegate at " + url);
-            try (InputStream is = new URL(new URL(url), "/status").openStream()) {
+            try (InputStream is = Util.openUrlStream(new URL(new URL(url), "/status"), 1000, 1000)) {
                 JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
                 jsonObject.get("availableCPU").getAsInt();
                 System.out.println("INFO: adding delegate at " + url);
-                AgentConnection agent = new AgentConnection(url, executor);
+                AgentConnection agent = new AgentConnection(url, false, executor);
                 agent.scheduleStatusCheck();
                 synchronized (delegates) {
                     delegates.add(agent);
@@ -103,7 +113,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     }
 
     private boolean hasDelegate(String url) {
-        for (AgentConnection agentConnection : safeCopy(delegates)) {
+        for (AgentConnection agentConnection : Util.safeCopy(delegates)) {
             if (url.equals(agentConnection.getUrl()))
                 return true;
         }
@@ -111,15 +121,24 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     }
 
     private void updateJobs() throws IOException {
-        for (BaseJob baseJob : safeCopy(jobs)) {
+        for (BaseJob baseJob : Util.safeCopy(jobs)) {
             BalancingJob bj = (BalancingJob) baseJob;
             if (!bj.hasDelegate())
                 continue;
             if (bj.getStatus() != BaseJob.Status.DONE) {
-                if (bj.getDelegate().getStatus() == BaseJob.Status.DONE) {
+                RemoteJob delegate = bj.getDelegate();
+                if (delegate.getStatus() == BaseJob.Status.DONE) {
                     jobDone(bj);
                 } else {
-                    bj.updateStatus(bj.getDelegate().getStatus());
+                    AgentConnection agent = delegate.getAgent();
+                    if (!agent.isOnline() && agent.getOfflineCounter() > 60) {
+                        System.out.println("WARN: [" + bj.getName() + "] Agent " + agent.getUrl()
+                                + " is offline for at least " + agent.getOfflineCounter() + "s, rescheduling.");
+                        bj.updateStatus(BaseJob.Status.NEW);
+                        bj.eraseDelegate();
+                    } else {
+                        bj.updateStatus(delegate.getStatus());
+                    }
                 }
             }
         }
@@ -141,7 +160,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                     files.delete(bj.getJobArchiveRef());
                 } catch (Exception e) {
                     System.out.println("ERROR: [" + bj.getName() + "] couldn't update the job status to DONE.");
-                    e.printStackTrace();
+                    e.printStackTrace(System.out);
                 }
                 bj.setDownloading(false);
             }
@@ -170,7 +189,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
 
     @Override
     protected Handler getStatusPage() {
-        return new BalancingStatusPage(jobs, delegates);
+        return new BalancingStatusPage(jobs, delegates, startTime);
     }
 
     private void startBalancingTasks() {
@@ -186,19 +205,21 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             public void run() {
                 try {
                     doBalancing();
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } catch (Exception e) {
+                    System.out.println("ERROR: Problem balancing");
+                    e.printStackTrace(System.out);
                 }
             }
-        }, 100, 100, TimeUnit.MILLISECONDS);
+        }, 100, 1000, TimeUnit.MILLISECONDS);
 
         executor.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 try {
                     updateJobs();
-                } catch (IOException e) {
-                    e.printStackTrace();
+                } catch (Exception e) {
+                    System.out.println("ERROR: Problem balancing");
+                    e.printStackTrace(System.out);
                 }
             }
         }, 100, 100, TimeUnit.MILLISECONDS);

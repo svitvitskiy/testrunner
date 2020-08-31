@@ -204,7 +204,7 @@ public class RegressionScheduler implements TestScheduler {
         } catch (IOException e) {
             System.out.println(PREFIX_ERROR + "Could not create a job archive for job '" + jobRequest.getJobName()
                     + "'." + SUFFIX_CLEAR);
-            e.printStackTrace();
+            e.printStackTrace(System.out);
         }
     }
 
@@ -231,7 +231,7 @@ public class RegressionScheduler implements TestScheduler {
         } catch (Exception e) {
             System.out.println(
                     PREFIX_ERROR + "[" + jobRequest.getJobName() + "] Couldn't process the job result." + SUFFIX_CLEAR);
-            e.printStackTrace();
+            e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), false);
         }
     }

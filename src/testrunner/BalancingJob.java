@@ -3,7 +3,7 @@ package testrunner;
 public class BalancingJob extends BaseJob {
     private RemoteJob delegate;
     private boolean downloading;
-    
+
     public BalancingJob(String name, String jobArchiveRef) {
         super(name, jobArchiveRef);
     }
@@ -23,8 +23,13 @@ public class BalancingJob extends BaseJob {
     public boolean isDownloading() {
         return downloading;
     }
-    
+
     public void setDownloading(boolean downloading) {
         this.downloading = downloading;
+    }
+
+    public void eraseDelegate() {
+        this.delegate = null;
+        this.downloading = false;
     }
 }

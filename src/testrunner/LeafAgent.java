@@ -21,6 +21,7 @@ public class LeafAgent extends BaseAgent {
     private FileStore files;
     private ExecutorService executor;
     private LeafJob.JobFactory jobFactory;
+    private long startTime;
 
     private LeafAgent(File baseDir) {
         int nThreads = Runtime.getRuntime().availableProcessors();
@@ -33,7 +34,7 @@ public class LeafAgent extends BaseAgent {
         Runnable runnable = new Runnable() {
             @Override
             public void run() {
-                for (BaseJob baseJob : safeCopy(jobs)) {
+                for (BaseJob baseJob : Util.safeCopy(jobs)) {
                     if (baseJob.getStatus() == Status.NEW) {
                         runJob((LeafJob) baseJob, executor);
                     }
@@ -42,6 +43,7 @@ public class LeafAgent extends BaseAgent {
         };
 
         tp.scheduleAtFixedRate(runnable, 100, 100, TimeUnit.MILLISECONDS);
+        startTime = System.currentTimeMillis();
     }
 
     public void runJob(LeafJob job, ExecutorService executor) {
@@ -54,7 +56,7 @@ public class LeafAgent extends BaseAgent {
                     job.run();
                     job.updateStatus(Status.DONE);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    e.printStackTrace(System.out);
                 }
             }
         });
@@ -82,7 +84,7 @@ public class LeafAgent extends BaseAgent {
     
     @Override
     protected Handler getStatusPage() {
-        return new LeafStatusPage(jobs);
+        return new LeafStatusPage(jobs, startTime);
     }
 
     public static void main(String[] args) throws Exception {

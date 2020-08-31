@@ -5,8 +5,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -14,7 +15,6 @@ import org.apache.commons.io.FileUtils;
 
 import testrunner.TestScheduler.JobRequest;
 import testrunner.TestScheduler.JobResult;
-import testrunner.Util._4Future;
 
 /**
  * Schedules encoder Test
@@ -55,21 +55,23 @@ public class TestRunner {
 
     public void run(String agentUrl, File baseFldr) throws Exception {
         int nThreads = Math.min(64, Runtime.getRuntime().availableProcessors() * 8);
-        ExecutorService executor = Executors.newFixedThreadPool(nThreads);
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(nThreads);
 
         ScheduledExecutorService executor2 = Executors.newScheduledThreadPool(1);
 
-        AgentConnection agent = new AgentConnection(agentUrl, executor2);
+        AgentConnection agent = new AgentConnection(agentUrl, true, executor2);
         agent.scheduleStatusCheck();
 
-        List<_4Future<JobResult>> futures = new ArrayList<_4Future<JobResult>>();
+        List<Future<JobResult>> futures = new ArrayList<Future<JobResult>>();
         scheduleJobs(agent, scheduler, baseFldr, executor, futures);
 
         System.out.println("INFO: Waiting for the jobs.");
         // Wait for everything to be processed
         List<JobResult> results = new ArrayList<JobResult>();
-        for (_4Future<JobResult> job : futures) {
-            results.add(job.get());
+        for (Future<JobResult> job : futures) {
+            JobResult e = job.get();
+            if (e != null)
+                results.add(e);
         }
 
         agent.shutdown();
@@ -81,55 +83,83 @@ public class TestRunner {
         executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.SECONDS);
     }
 
-    private void scheduleJobs(AgentConnection agent, TestScheduler scheduler, File baseFldr, ExecutorService executor,
-            List<_4Future<JobResult>> results) throws IOException {
+    private void scheduleJobs(AgentConnection agent, TestScheduler scheduler, File baseFldr,
+            ScheduledExecutorService executor, List<Future<JobResult>> results) throws IOException {
         File requestsFldr = new File(baseFldr, "requests");
         File resultsFldr = new File(baseFldr, "results");
-        FileUtils.forceDelete(requestsFldr);
-        FileUtils.forceDelete(resultsFldr);
+        if (requestsFldr.exists())
+            FileUtils.forceDelete(requestsFldr);
+        if (resultsFldr.exists())
+            FileUtils.forceDelete(resultsFldr);
         requestsFldr.mkdirs();
         resultsFldr.mkdirs();
 
         List<JobRequest> requests = scheduler.generateJobRequests(requestsFldr);
         for (JobRequest jobRequest : requests) {
-            _4Future<JobResult> future = Util.compoundFuture(executor.submit(() -> {
+            Future<JobResult> future = Util.compoundFuture5(executor.submit(() -> {
                 scheduler.createJobArchive(jobRequest);
-                return executor.submit(() -> {
-                    RemoteJob rj = scheduleWithRetry(agent, jobRequest);
-                    return rj.onDone(() -> executor.submit(() -> processJobResult(jobRequest, rj, resultsFldr)));
-                });
+                Callable<Future<Future<Future<JobResult>>>> task = new Callable<Future<Future<Future<JobResult>>>>() {
+                    int retries0 = 0;
+
+                    public Future<Future<Future<JobResult>>> call() {
+                        try {
+                            RemoteJob rj = agent.scheduleJob(jobRequest.getJobName(), jobRequest.getJobArchive());
+                            if (rj == null) {
+                                return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
+                            }
+                            System.out.println("INFO: [" + jobRequest.getJobName() + "] Scheduled.");
+                            return rj.onDone(() -> {
+                                Callable<Future<JobResult>> task2 = new Callable<Future<JobResult>>() {
+                                    int retries1 = 0;
+
+                                    public Future<JobResult> call() {
+                                        try {
+                                            return Util.dummyFuture(processJobResult(jobRequest, rj, resultsFldr));
+                                        } catch (Exception e) {
+                                            if (retries1 > MAX_RETRIES) {
+                                                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
+                                                        + "] Couldn't schedule a job at all after " + MAX_RETRIES
+                                                        + " retries." + SUFFIX_CLEAR);
+                                                return Util.dummyFuture(new JobResult(jobRequest, false, ""));
+                                            }
+                                            ++retries1;
+                                            int retryTime = (int) (Math.random() * 10000);
+                                            System.out.println(PREFIX_WARN + "[" + jobRequest.getJobName()
+                                                    + "] Couldn't get a job result, retrying in " + retryTime + "ms."
+                                                    + SUFFIX_CLEAR);
+                                            return Util.compoundFuture2(
+                                                    executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
+                                        }
+                                    }
+                                };
+                                return executor.submit(task2);
+                            });
+                        } catch (Exception e) {
+                            if (retries0 > MAX_RETRIES) {
+                                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
+                                        + "] Couldn't schedule a job at all after " + MAX_RETRIES + " retries."
+                                        + SUFFIX_CLEAR);
+                                return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
+                            }
+                            ++retries0;
+                            int retryTime = (int) (Math.random() * 10000);
+                            System.out.println(PREFIX_WARN + "[" + jobRequest.getJobName()
+                                    + "] Couldn't start a job, retrying in " + retryTime + "ms." + SUFFIX_CLEAR);
+                            return Util.compoundFuture2(executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
+                        }
+                    }
+                };
+                return executor.submit(task);
             }));
             results.add(future);
         }
     }
 
-    private RemoteJob scheduleWithRetry(AgentConnection agent, JobRequest jobRequest) {
-        for (int i = 0; i < MAX_RETRIES; i++) {
-            try {
-                RemoteJob rj = agent.scheduleJob(jobRequest.getJobName(), jobRequest.getJobArchive());
-                System.out.println("INFO: [" + jobRequest.getJobName() + "] Scheduled.");
-                return rj;
-            } catch (IOException e) {
-                int retryTime = (int) (Math.random() * 1000);
-                System.out.println(PREFIX_WARN + "[" + jobRequest.getJobName() + "] Couldn't start a job, retrying in "
-                        + retryTime + "ms." + SUFFIX_CLEAR);
-                // Random holdoff
-                try {
-                    Thread.sleep(retryTime);
-                } catch (InterruptedException e1) {
-                }
-            }
-        }
-        System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName() + "] Couldn't schedule a job at all after "
-                + MAX_RETRIES + " retries." + SUFFIX_CLEAR);
-        return null;
-    }
-
-    private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) {
+    private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) throws IOException {
         if (job == null)
             return new JobResult(jobRequest, false, "Remote job was null");
         System.out.println("INFO: [" + jobRequest.getJobName() + "] Processing result.");
-        File resultArchive = getResultWithRetry(job);
+        File resultArchive = job.getResultArchive();
 
         if (resultArchive == null)
             return new JobResult(jobRequest, false, "Result archive was null");
@@ -139,25 +169,5 @@ public class TestRunner {
         resultArchive = dest;
 
         return scheduler.processResult(jobRequest, resultArchive);
-    }
-
-    private File getResultWithRetry(RemoteJob job) {
-        for (int i = 0; i < MAX_RETRIES; i++) {
-            try {
-                return job.getResultArchive();
-            } catch (IOException e) {
-                int retryTime = (int) (Math.random() * 1000);
-                System.out.println(PREFIX_WARN + "[" + job.getName() + "] Couldn't get a job result, retrying in "
-                        + retryTime + "ms." + SUFFIX_CLEAR);
-                // Random holdoff
-                try {
-                    Thread.sleep(retryTime);
-                } catch (InterruptedException e1) {
-                }
-            }
-        }
-        System.out.println(PREFIX_ERROR + "[" + job.getName() + "] Couldn't get a result at all after " + MAX_RETRIES
-                + " retries." + SUFFIX_CLEAR);
-        return null;
     }
 }

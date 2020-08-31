@@ -106,7 +106,8 @@ public class LeafJob extends BaseJob {
     private void downloadJobArchive() throws IOException {
         System.out.println("INFO: [" + getName() + "] Downloading job archive '" + getRemoteJobArchiveRef() + "' from '"
                 + getRemoteUrl() + "'.");
-        try (InputStream is = new URL(new URL(getRemoteUrl()), "/download/" + getRemoteJobArchiveRef()).openStream()) {
+        try (InputStream is = Util
+                .openUrlStream(new URL(new URL(getRemoteUrl()), "/download/" + getRemoteJobArchiveRef()), 1000, 3000)) {
             String jobArchiveRef = files.addAsInputStream(is);
             updateJobArchiveRef(jobArchiveRef);
         }

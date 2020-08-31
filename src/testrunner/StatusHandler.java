@@ -27,7 +27,7 @@ public class StatusHandler implements BaseAgent.Handler {
         int cpuUsed = 0;
         txt.append("{");
         txt.append("\"jobs\": [");
-        for (Iterator<BaseJob> it = BaseAgent.safeCopy(jobs).iterator(); it.hasNext();) {
+        for (Iterator<BaseJob> it = Util.safeCopy(jobs).iterator(); it.hasNext();) {
             BaseJob job = it.next();
             txt.append("{");
             txt.append("\"jobArchiveRef\":\"" + job.getJobArchiveRef() + "\",");

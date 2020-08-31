@@ -53,12 +53,4 @@ public abstract class BaseAgent extends AbstractHandler {
     protected abstract Handler getUploadHandler();
 
     protected abstract Handler getStatusHandler();
-    
-    static <T> List<T> safeCopy(List<T> unsafe) {
-        List<T> throwaway = new ArrayList<T>();
-        synchronized (unsafe) {
-            throwaway.addAll(unsafe);
-        }
-        return throwaway;
-    }
 }

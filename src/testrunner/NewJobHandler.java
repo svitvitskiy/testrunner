@@ -109,7 +109,7 @@ public class NewJobHandler implements BaseAgent.Handler {
     }
 
     private boolean nameClash(String jobName) {
-        for (BaseJob baseJob : BaseAgent.safeCopy(jobs)) {
+        for (BaseJob baseJob : Util.safeCopy(jobs)) {
             if (jobName.equals(baseJob.getName())) {
                 return true;
             }
