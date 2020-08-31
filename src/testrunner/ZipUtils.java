@@ -13,6 +13,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 
 public class ZipUtils {
@@ -39,6 +40,21 @@ public class ZipUtils {
             while (zipEntry != null) {
                 if (filePath.equals(zipEntry.getName())) {
                     result = IOUtils.toString(zis);
+                }
+                zipEntry = zis.getNextEntry();
+            }
+            zis.closeEntry();
+            return result;
+        }
+    }
+    
+    public static String extractFileTo(File zipFile, String filePath, File toFile) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
+            ZipEntry zipEntry = zis.getNextEntry();
+            String result = null;
+            while (zipEntry != null) {
+                if (filePath.equals(zipEntry.getName())) {
+                    FileUtils.copyInputStreamToFile(zis, toFile);
                 }
                 zipEntry = zis.getNextEntry();
             }

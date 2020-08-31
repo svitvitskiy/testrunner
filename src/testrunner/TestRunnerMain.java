@@ -22,7 +22,7 @@ public class TestRunnerMain {
         } else if ("client".equals(command)) {
             AgentConnection.main(newArgs);
         } else if ("scheduler".equals(command)) {
-            TestScheduler.main(newArgs);
+            TestRunner.main(newArgs);
         } else {
             System.err.println("Unknown command: '" + command + "'");
         }

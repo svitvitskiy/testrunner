@@ -3,8 +3,6 @@ package testrunner;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-import testrunner.TestScheduler.JobResult;
-
 public class Util {
     public static class _4Future<T> {
         private Future<Future<Future<Future<T>>>> future;
@@ -42,7 +40,7 @@ public class Util {
         }
     }
 
-    public static _4Future<JobResult> compoundFuture(Future<Future<Future<Future<JobResult>>>> submit) {
-        return new _4Future<TestScheduler.JobResult>(submit);
+    public static <T> _4Future<T> compoundFuture(Future<Future<Future<Future<T>>>> submit) {
+        return new _4Future<T>(submit);
     }
 }
