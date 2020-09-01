@@ -40,7 +40,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
                 return;
             }
             AgentConnection remote = safeCopy.get(idx);
-            System.out.println("INFO: Proxying remote url: '" + remote.getUrl() + "'");
+            Log.info("Proxying remote url: '" + remote.getUrl() + "'");
             try (InputStream is = Util.openUrlStream(new URL(remote.getUrl()), 1000, 3000)) {
                 IOUtils.copy(is, response.getOutputStream());
             }
@@ -63,7 +63,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
                 boolean found = false;
                 for (BaseJob baseJob : Util.safeCopy(jobs)) {
                     if (jobName.equals(baseJob.getName())) {
-                        System.out.println("INFO: [" + jobName + "] rerunning.");
+                        Log.info("[" + jobName + "] rerunning.");
                         found = true;
                         baseJob.updateStatus(BaseJob.Status.NEW);
                         ((BalancingJob) baseJob).eraseDelegate();
@@ -71,7 +71,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
                     }
                 }
                 if (!found) {
-                    System.out.println("INFO: [" + jobName + "] Couldn't rerun, job not found.");
+                    Log.info("[" + jobName + "] Couldn't rerun, job not found.");
                 }
                 redirectHome(response);
             } else {

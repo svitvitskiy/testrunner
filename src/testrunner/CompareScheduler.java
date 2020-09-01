@@ -19,10 +19,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class CompareScheduler implements TestScheduler {
-    private String PREFIX_ERROR = (char) 27 + "[91mERROR: ";
-    private String PREFIX_WARN = (char) 27 + "[95mWARN: ";
-    private String SUFFIX_CLEAR = (char) 27 + "[0m";
-
     private static class JobRequest extends TestScheduler.JobRequest {
         private String stream;
         private Descriptor descriptor;
@@ -178,7 +174,7 @@ public class CompareScheduler implements TestScheduler {
 
     @Override
     public void finish(List<TestScheduler.JobResult> results, File baseFldr) throws IOException {
-        System.out.println("INFO: Generating report.");
+        Log.info("Generating report.");
         generateReport(baseFldr, results, descriptor);
     }
 
@@ -213,20 +209,17 @@ public class CompareScheduler implements TestScheduler {
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
 
             if (psnrTxt == null) {
-                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
-                        + "] Job result did not contain PSNR data." + SUFFIX_CLEAR);
+                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain PSNR data.");
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
             if (ssimTxt == null) {
-                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
-                        + "] Job result did not contain SSIM data." + SUFFIX_CLEAR);
+                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain SSIM data.");
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
             if (fileSize < 0) {
-                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
-                        + "] Job result did not contain encoded stream." + SUFFIX_CLEAR);
+                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain encoded stream.");
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
@@ -238,8 +231,7 @@ public class CompareScheduler implements TestScheduler {
 
             return new JobResult(jobRequest, true, "", fileSize, psnr, ssim);
         } catch (Exception e) {
-            System.out.println(
-                    PREFIX_ERROR + "[" + jobRequest.getJobName() + "] Couldn't process the job result." + SUFFIX_CLEAR);
+            Log.error("[" + jobRequest.getJobName() + "] Couldn't process the job result.");
             e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, 0, 0);
         }
@@ -278,32 +270,29 @@ public class CompareScheduler implements TestScheduler {
             map.put(encBinF.getName(), encBinF);
 
             ZipUtils.createArchive(map, jobRequest.getJobArchive());
-            System.out.println("INFO: [" + jobRequest.getJobName() + "] Created job archive.");
+            Log.info("[" + jobRequest.getJobName() + "] Created job archive.");
         } catch (IOException e) {
-            System.out.println(PREFIX_ERROR + "Could not create a job archive for job '" + jobRequest.getJobName()
-                    + "'." + SUFFIX_CLEAR);
+            Log.error("Could not create a job archive for job '" + jobRequest.getJobName() + "'.");
             e.printStackTrace(System.out);
         }
     }
 
     private void generateReport(File baseFldr, List<TestScheduler.JobResult> results, Descriptor descriptor)
             throws IOException {
-        System.out.println("INFO: Done, generating report.");
+        Log.info("Done, generating report.");
         File reportFile = new File(baseFldr, "report.html");
         List<String> strings0 = new ArrayList<String>();
         List<String> strings1 = new ArrayList<String>();
         for (TestScheduler.JobResult jr : Util.copy(results)) {
             if (!jr.isValid()) {
-                System.out.println(PREFIX_WARN + "[" + jr.getJobRequest().getJobName()
-                        + "] Didn't have the result, skipping." + SUFFIX_CLEAR);
+                Log.warn("[" + jr.getJobRequest().getJobName() + "] Didn't have the result, skipping.");
                 String[] split = jr.getStdout().split("\n");
                 String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
-                System.out.println(PREFIX_WARN + "    "
-                        + String.join(SUFFIX_CLEAR + "\n" + PREFIX_WARN + "    ", copyOfRange) + SUFFIX_CLEAR);
+                Log.warn("    " + String.join("\n    ", copyOfRange));
                 removeAllSimilar(jr, results);
             }
         }
-        
+
         for (TestScheduler.JobResult jr_ : results) {
             JobResult jr = (JobResult) jr_;
             JobRequest jobRequest = (JobRequest) jr.getJobRequest();

@@ -29,7 +29,7 @@ public class DownloadHandler implements BaseAgent.Handler {
             response.setStatus(200);
             FileUtils.copyFile(files.get(id), response.getOutputStream());
             if ("delete".equals(option)) {
-                System.out.println("INFO: Deleting file '" + id + "'");
+                Log.info("Deleting file '" + id + "'");
                 files.delete(id);
             }
         }

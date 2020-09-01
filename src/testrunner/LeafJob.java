@@ -41,13 +41,13 @@ public class LeafJob extends BaseJob {
 
         @Override
         public LeafJob newJob(String name, String jobArchiveRef) {
-            System.out.println("INFO: [" + name + "] Creating job.");
+            Log.info("[" + name + "] Creating job.");
             return new LeafJob(name, jobArchiveRef, files, processingBase);
         }
 
         @Override
         public BaseJob newJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq) {
-            System.out.println("INFO: [" + name + "] Creating job.");
+            Log.info("[" + name + "] Creating job.");
             return new LeafJob(name, remoteJobArchiveRef, remoteUrl, cpuReq, files, processingBase);
         }
     }
@@ -67,7 +67,7 @@ public class LeafJob extends BaseJob {
 
     public void run() throws Exception {
         // Dearchive the job
-        System.out.println("INFO: [" + getName() + "] Running job.");
+        Log.info("[" + getName() + "] Running job.");
         if (getJobArchiveRef() == null && getRemoteJobArchiveRef() != null) {
             downloadJobArchive();
         }
@@ -97,14 +97,14 @@ public class LeafJob extends BaseJob {
         tmp.delete();
 
         // Deleting the input file
-        System.out.println("INFO: [" + getName() + "] Deleting job archive '" + getJobArchiveRef() + "'.");
+        Log.info("[" + getName() + "] Deleting job archive '" + getJobArchiveRef() + "'.");
         files.delete(getJobArchiveRef());
 
-        System.out.println("INFO: [" + getName() + "] Finished job.");
+        Log.info("[" + getName() + "] Finished job.");
     }
 
     private void downloadJobArchive() throws IOException {
-        System.out.println("INFO: [" + getName() + "] Downloading job archive '" + getRemoteJobArchiveRef() + "' from '"
+        Log.info("[" + getName() + "] Downloading job archive '" + getRemoteJobArchiveRef() + "' from '"
                 + getRemoteUrl() + "'.");
         try (InputStream is = Util
                 .openUrlStream(new URL(new URL(getRemoteUrl()), "/download/" + getRemoteJobArchiveRef()), 1000, 3000)) {

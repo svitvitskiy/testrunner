@@ -43,22 +43,22 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     private void doBalancing() throws IOException {
         List<AgentConnection> tmp = Util.safeCopy(delegates);
         List<BaseJob> safeCopy = Util.safeCopy(jobs);
-        System.out.println("    DEBUG: Trying to balance " + safeCopy.size() + " jobs.");
+        Log.debug("Trying to balance " + safeCopy.size() + " jobs.");
         for (BaseJob baseJob : safeCopy) {
             BalancingJob bj = (BalancingJob) baseJob;
             if (!bj.hasDelegate()) {
                 RemoteJob remoteJob = tryDelegate(bj, tmp);
                 if (remoteJob != null) {
                     bj.updateDelegate(remoteJob);
-                    System.out.println("INFO: [" + bj.getName() + "] Scheduled job with remote agent '"
-                            + remoteJob.getAgent().getUrl() + "'.");
+                    Log.info("[" + bj.getName() + "] Scheduled job with remote agent '" + remoteJob.getAgent().getUrl()
+                            + "'.");
                 }
             }
         }
     }
 
     private RemoteJob tryDelegate(BalancingJob job, List<AgentConnection> tmp) throws IOException {
-        System.out.println("    DEBUG: [" + job.getName() + "] Trying to balance");
+        Log.debug("[" + job.getName() + "] Trying to balance");
         int bestCapacity = 0;
         AgentConnection bestDelegate = null;
         for (AgentConnection delegate : tmp) {
@@ -75,14 +75,13 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             tmp.remove(bestDelegate);
             String jobManifest = getJobManifest(file);
             if (jobManifest == null) {
-                System.out.println("ERROR: [" + job.getName() + "] Couldn't schedule, job has not manifest.json.");
+                Log.error("[" + job.getName() + "] Couldn't schedule, job has not manifest.json.");
                 return null;
             }
             RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(
-                    job.getName() + String.format("_bal%06d", (int)(Math.random() * 1000000)), job.getJobArchiveRef(),
+                    job.getName() + String.format("_bal%06d", (int) (Math.random() * 1000000)), job.getJobArchiveRef(),
                     jobManifest, myUrl);
-            System.out
-                    .println("    DEBUG: [" + job.getName() + "] " + (scheduleJob == null ? "is null" : "is not null"));
+            Log.debug("[" + job.getName() + "] " + (scheduleJob == null ? "is null" : "is not null"));
             bestDelegate.updateAvailableCPU(0);
             return scheduleJob;
         }
@@ -97,11 +96,11 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         for (String url : delegateUrls) {
             if (hasDelegate(url))
                 continue;
-            System.out.println("DEBUG: trying delegate at " + url);
+            Log.debug("trying delegate at " + url);
             try (InputStream is = Util.openUrlStream(new URL(new URL(url), "/status"), 1000, 1000)) {
                 JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
                 jsonObject.get("availableCPU").getAsInt();
-                System.out.println("INFO: adding delegate at " + url);
+                Log.info("adding delegate at " + url);
                 AgentConnection agent = new AgentConnection(url, false, executor);
                 agent.scheduleStatusCheck();
                 synchronized (delegates) {
@@ -132,8 +131,8 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 } else {
                     AgentConnection agent = delegate.getAgent();
                     if (!agent.isOnline() && agent.getOfflineCounter() > 60) {
-                        System.out.println("WARN: [" + bj.getName() + "] Agent " + agent.getUrl()
-                                + " is offline for at least " + agent.getOfflineCounter() + "s, rescheduling.");
+                        Log.warn("[" + bj.getName() + "] Agent " + agent.getUrl() + " is offline for at least "
+                                + agent.getOfflineCounter() + "s, rescheduling.");
                         bj.updateStatus(BaseJob.Status.NEW);
                         bj.eraseDelegate();
                     } else {
@@ -156,10 +155,10 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                     String resultArchiveRef = files.addAsFile(f);
                     bj.updateResultArchiveRef(resultArchiveRef);
                     bj.updateStatus(BaseJob.Status.DONE);
-                    System.out.println("INFO: [" + bj.getName() + "] Deleting file '" + bj.getJobArchiveRef() + "'.");
+                    Log.info("[" + bj.getName() + "] Deleting file '" + bj.getJobArchiveRef() + "'.");
                     files.delete(bj.getJobArchiveRef());
                 } catch (Exception e) {
-                    System.out.println("ERROR: [" + bj.getName() + "] couldn't update the job status to DONE.");
+                    Log.error("[" + bj.getName() + "] couldn't update the job status to DONE.");
                     e.printStackTrace(System.out);
                 }
                 bj.setDownloading(false);
@@ -206,7 +205,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 try {
                     doBalancing();
                 } catch (Exception e) {
-                    System.out.println("ERROR: Problem balancing");
+                    Log.error("Problem balancing");
                     e.printStackTrace(System.out);
                 }
             }
@@ -218,7 +217,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 try {
                     updateJobs();
                 } catch (Exception e) {
-                    System.out.println("ERROR: Problem balancing");
+                    Log.error("Problem balancing");
                     e.printStackTrace(System.out);
                 }
             }

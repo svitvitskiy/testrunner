@@ -24,9 +24,6 @@ import testrunner.TestScheduler.JobResult;
  */
 public class TestRunner {
     private static final int MAX_RETRIES = 100;
-    private String PREFIX_ERROR = (char) 27 + "[91mERROR: ";
-    private String PREFIX_WARN = (char) 27 + "[95mWARN: ";
-    private String SUFFIX_CLEAR = (char) 27 + "[0m";
     private TestScheduler scheduler;
 
     public TestRunner(TestScheduler scheduler) {
@@ -65,7 +62,7 @@ public class TestRunner {
         List<Future<JobResult>> futures = new ArrayList<Future<JobResult>>();
         scheduleJobs(agent, scheduler, baseFldr, executor, futures);
 
-        System.out.println("INFO: Waiting for the jobs.");
+        Log.info("Waiting for the jobs.");
         // Wait for everything to be processed
         List<JobResult> results = new ArrayList<JobResult>();
         for (Future<JobResult> job : futures) {
@@ -107,7 +104,7 @@ public class TestRunner {
                             if (rj == null) {
                                 return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
                             }
-                            System.out.println("INFO: [" + jobRequest.getJobName() + "] Scheduled.");
+                            Log.info("[" + jobRequest.getJobName() + "] Scheduled.");
                             return rj.onDone(() -> {
                                 Callable<Future<JobResult>> task2 = new Callable<Future<JobResult>>() {
                                     int retries1 = 0;
@@ -117,16 +114,15 @@ public class TestRunner {
                                             return Util.dummyFuture(processJobResult(jobRequest, rj, resultsFldr));
                                         } catch (Exception e) {
                                             if (retries1 > MAX_RETRIES) {
-                                                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
+                                                Log.error("[" + jobRequest.getJobName()
                                                         + "] Couldn't schedule a job at all after " + MAX_RETRIES
-                                                        + " retries." + SUFFIX_CLEAR);
+                                                        + " retries.");
                                                 return Util.dummyFuture(new JobResult(jobRequest, false, ""));
                                             }
                                             ++retries1;
                                             int retryTime = (int) (Math.random() * 10000);
-                                            System.out.println(PREFIX_WARN + "[" + jobRequest.getJobName()
-                                                    + "] Couldn't get a job result, retrying in " + retryTime + "ms."
-                                                    + SUFFIX_CLEAR);
+                                            Log.warn("[" + jobRequest.getJobName()
+                                                    + "] Couldn't get a job result, retrying in " + retryTime + "ms.");
                                             return Util.compoundFuture2(
                                                     executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
                                         }
@@ -136,15 +132,14 @@ public class TestRunner {
                             });
                         } catch (Exception e) {
                             if (retries0 > MAX_RETRIES) {
-                                System.out.println(PREFIX_ERROR + "[" + jobRequest.getJobName()
-                                        + "] Couldn't schedule a job at all after " + MAX_RETRIES + " retries."
-                                        + SUFFIX_CLEAR);
+                                Log.error("[" + jobRequest.getJobName() + "] Couldn't schedule a job at all after "
+                                        + MAX_RETRIES + " retries.");
                                 return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
                             }
                             ++retries0;
                             int retryTime = (int) (Math.random() * 10000);
-                            System.out.println(PREFIX_WARN + "[" + jobRequest.getJobName()
-                                    + "] Couldn't start a job, retrying in " + retryTime + "ms." + SUFFIX_CLEAR);
+                            Log.warn("[" + jobRequest.getJobName() + "] Couldn't start a job, retrying in " + retryTime
+                                    + "ms.");
                             return Util.compoundFuture2(executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
                         }
                     }
@@ -158,7 +153,7 @@ public class TestRunner {
     private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) throws IOException {
         if (job == null)
             return new JobResult(jobRequest, false, "Remote job was null");
-        System.out.println("INFO: [" + jobRequest.getJobName() + "] Processing result.");
+        Log.info("[" + jobRequest.getJobName() + "] Processing result.");
         File resultArchive = job.getResultArchive();
 
         if (resultArchive == null)

@@ -58,16 +58,16 @@ public class RemoteJob {
         synchronized (this) {
             fireDoneCallback = this.status != newStatus && newStatus == BaseJob.Status.DONE;
             if (this.status != newStatus) {
-                System.out.println("  DEBUG [" + name + "] Status update " + this.status + " -> " + newStatus);
+                Log.debug("[" + name + "] Status update " + this.status + " -> " + newStatus);
             }
             this.status = newStatus;
         }
 
         if (fireDoneCallback && doneCallback != null) {
             try {
-                System.out.println("  DEBUG [" + name + "] Firing done callback");
+                Log.debug("[" + name + "] Firing done callback");
                 callbackResult = doneCallback.call();
-                System.out.println("  DEBUG [" + name + "] Callback done");
+                Log.debug("[" + name + "] Callback done");
             } catch (Exception e) {
                 e.printStackTrace(System.out);
             }
@@ -91,7 +91,7 @@ public class RemoteJob {
             return resultArchive;
         File temp = File.createTempFile("stan", "cool");
         URL downloadUrl = new URL(new URL(agent.getUrl()), "/download/" + resultArchiveRef + "?option=delete");
-        System.out.println("INFO: [" + name + "] Downloading result from '" + downloadUrl.toExternalForm() + "'");
+        Log.info("[" + name + "] Downloading result from '" + downloadUrl.toExternalForm() + "'");
         try (InputStream is = Util.openUrlStream(downloadUrl, 1000, 3000)) {
             FileUtils.copyInputStreamToFile(is, temp);
         }
@@ -122,10 +122,9 @@ public class RemoteJob {
 
             @Override
             public T get() throws InterruptedException, ExecutionException {
-                System.out.println(
-                        (char) 27 + "[95m  DEBUG [" + name + "] Returning callback result" + (char) 27 + "[0m");
+                Log.debug("[" + name + "] Returning callback result");
                 waitDone();
-                System.out.println("  DEBUG [" + name + "] Returning callback result");
+                Log.debug("[" + name + "] Returning callback result");
                 return (T) callbackResult;
             }
 
@@ -162,7 +161,7 @@ public class RemoteJob {
     }
 
     public void incrementRetryCounter() {
-        ++ retryCounter;
+        ++retryCounter;
     }
 
     public int getRetryCounter() {
@@ -175,15 +174,15 @@ public class RemoteJob {
 
     public void updateJobArchive(File jobArchive) {
         this.jobArchive = jobArchive;
-        
+
     }
-    
+
     public File getJobArchive() {
         return jobArchive;
     }
 
     public void setStatus(Status new1) {
         this.status = new1;
-        
+
     }
 }

@@ -17,10 +17,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class RegressionScheduler implements TestScheduler {
-    private String PREFIX_ERROR = (char) 27 + "[91mERROR: ";
-    private String PREFIX_WARN = (char) 27 + "[95mWARN: ";
-    private String SUFFIX_CLEAR = (char) 27 + "[0m";
-
     static class JobRequest extends TestScheduler.JobRequest {
         private int encIdx;
 
@@ -200,10 +196,9 @@ public class RegressionScheduler implements TestScheduler {
             map.put(encBinF.getName(), encBinF);
 
             ZipUtils.createArchive(map, jobRequest.getJobArchive());
-            System.out.println("INFO: [" + jobRequest.getJobName() + "] Created job archive.");
+            Log.info("[" + jobRequest.getJobName() + "] Created job archive.");
         } catch (IOException e) {
-            System.out.println(PREFIX_ERROR + "Could not create a job archive for job '" + jobRequest.getJobName()
-                    + "'." + SUFFIX_CLEAR);
+            Log.error("Could not create a job archive for job '" + jobRequest.getJobName() + "'.");
             e.printStackTrace(System.out);
         }
     }
@@ -229,8 +224,7 @@ public class RegressionScheduler implements TestScheduler {
 
             return new JobResult(jobRequest, true, stdout, contentEquals);
         } catch (Exception e) {
-            System.out.println(
-                    PREFIX_ERROR + "[" + jobRequest.getJobName() + "] Couldn't process the job result." + SUFFIX_CLEAR);
+            Log.error("[" + jobRequest.getJobName() + "] Couldn't process the job result.");
             e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), false);
         }

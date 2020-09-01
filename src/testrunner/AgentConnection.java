@@ -81,7 +81,7 @@ public class AgentConnection {
                 } catch (Exception e) {
                     if (online == true) {
                         connectiondDown();
-                        System.out.println("ERROR: updating job status for an agent '" + url + "'");
+                        Log.error("updating job status for an agent '" + url + "'");
                     }
                     online = false;
                     ++offlineCounter;
@@ -127,8 +127,7 @@ public class AgentConnection {
                     remoteJob.incrementRetryCounter();
                     if (remoteJob.getRetryCounter() > 60) {
                         remoteJob.resetRetryCounter();
-                        System.out.println(
-                                "WARN: [" + remoteJob.getName() + "] Not found on remote agent, rescheduling.");
+                        Log.warn("[" + remoteJob.getName() + "] Not found on remote agent, rescheduling.");
                         rescheduleJob(remoteJob);
                     }
                 }
@@ -185,7 +184,7 @@ public class AgentConnection {
 
     public RemoteJob scheduleJob(String name, File jobArchive) throws IOException {
         String fileid = uploadJobArchive(jobArchive);
-        System.out.println("INFO: [" + name + "] file id:" + fileid);
+        Log.info("[" + name + "] file id:" + fileid);
         if (!scheduleJob(name, fileid))
             return null;
 
@@ -204,9 +203,9 @@ public class AgentConnection {
     private void rescheduleJob(RemoteJob remoteJob) throws IOException {
         remoteJob.setStatus(BaseJob.Status.NEW);
         String fileid = uploadJobArchive(remoteJob.getJobArchive());
-        System.out.println("INFO: [" + remoteJob.getName() + "] file id:" + fileid);
+        Log.info("[" + remoteJob.getName() + "] file id:" + fileid);
         if (!scheduleJob(remoteJob.getName(), fileid)) {
-            System.out.println("WARN: [" + remoteJob.getName() + "] Couldn't reschedule a job.");
+            Log.warn("[" + remoteJob.getName() + "] Couldn't reschedule a job.");
         }
     }
 
@@ -229,7 +228,7 @@ public class AgentConnection {
         if (response.getStatusLine().getStatusCode() != 200) {
             String responseBody = EntityUtils.toString(response.getEntity());
             JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
-            System.out.println("ERROR: [" + name + "] " + jsonObject.get("message").getAsString());
+            Log.error("[" + name + "] " + jsonObject.get("message").getAsString());
             return false;
         }
         return true;
@@ -241,7 +240,7 @@ public class AgentConnection {
         String newUrl = new URL(new URL(url), "/new").toExternalForm();
         HttpPost httpPost = new HttpPost(newUrl);
 
-        System.out.println("    DEBUG: [" + name + "] scheduling job with '" + newUrl + "'");
+        Log.debug("[" + name + "] scheduling job with '" + newUrl + "'");
 
         String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
                 + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest + "}";
