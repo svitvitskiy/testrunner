@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 public class TestRunnerMain {
     public static void main(String[] args) throws Exception {
+        System.out.println("Version: " + new Util().getVersion());
         if (args.length < 1) {
             System.err.println("Syntax: testrunner <command> ...\n" 
                     + "  where command is:\n"

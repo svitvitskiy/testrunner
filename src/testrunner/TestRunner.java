@@ -25,9 +25,11 @@ import testrunner.TestScheduler.JobResult;
 public class TestRunner {
     private static final int MAX_RETRIES = 100;
     private TestScheduler scheduler;
+    private HttpIface http;
 
     public TestRunner(TestScheduler scheduler) {
         this.scheduler = scheduler;
+        this.http = new HttpIface(1000 /*connectionTimeout*/, 20000 /*socketTimeout*/);
     }
 
     public static void main(String[] args) throws Exception {
@@ -56,7 +58,7 @@ public class TestRunner {
 
         ScheduledExecutorService executor2 = Executors.newScheduledThreadPool(1);
 
-        AgentConnection agent = new AgentConnection(agentUrl, true, executor2);
+        AgentConnection agent = new AgentConnection(agentUrl, true, executor2, http);
         agent.scheduleStatusCheck();
 
         List<Future<JobResult>> futures = new ArrayList<Future<JobResult>>();
@@ -103,6 +105,9 @@ public class TestRunner {
                             RemoteJob rj = agent.scheduleJob(jobRequest.getJobName(), jobRequest.getJobArchive());
                             if (rj == null) {
                                 return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
+                            } else if (rj == RemoteJob.WAIT) {
+                                int retryTime = (int) (Math.random() * 10000);
+                                return Util.compoundFuture2(executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
                             }
                             Log.info("[" + jobRequest.getJobName() + "] Scheduled.");
                             return rj.onDone(() -> {
@@ -136,6 +141,7 @@ public class TestRunner {
                                         + MAX_RETRIES + " retries.");
                                 return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
                             }
+                            Log.debug(e);
                             ++retries0;
                             int retryTime = (int) (Math.random() * 10000);
                             Log.warn("[" + jobRequest.getJobName() + "] Couldn't start a job, retrying in " + retryTime
@@ -154,7 +160,7 @@ public class TestRunner {
         if (job == null)
             return new JobResult(jobRequest, false, "Remote job was null");
         Log.info("[" + jobRequest.getJobName() + "] Processing result.");
-        File resultArchive = job.getResultArchive();
+        File resultArchive = job.getResultArchive(http);
 
         if (resultArchive == null)
             return new JobResult(jobRequest, false, "Result archive was null");

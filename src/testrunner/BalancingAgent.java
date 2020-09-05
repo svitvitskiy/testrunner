@@ -30,6 +30,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     private List<String> delegateUrls;
     private String myUrl;
     private long startTime;
+    private HttpIface http;
 
     public BalancingAgent(File agentBase, List<String> delegateUrls, String myUrl) {
         this.myUrl = myUrl;
@@ -37,6 +38,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         this.executor = Executors.newScheduledThreadPool(Math.min(64, nThreads * 8));
         files = new FileStore(new File(agentBase, "store"));
         this.delegateUrls = delegateUrls;
+        this.http = new HttpIface(1000 /*connectionTimeout*/, 20000 /*socketTimeout*/);
         this.startTime = System.currentTimeMillis();
     }
 
@@ -97,11 +99,11 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             if (hasDelegate(url))
                 continue;
             Log.debug("trying delegate at " + url);
-            try (InputStream is = Util.openUrlStream(new URL(new URL(url), "/status"), 1000, 1000)) {
+            try (InputStream is = http.openUrlStream(new URL(new URL(url), "/status"))) {
                 JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
                 jsonObject.get("availableCPU").getAsInt();
                 Log.info("adding delegate at " + url);
-                AgentConnection agent = new AgentConnection(url, false, executor);
+                AgentConnection agent = new AgentConnection(url, false, executor, http);
                 agent.scheduleStatusCheck();
                 synchronized (delegates) {
                     delegates.add(agent);
@@ -151,7 +153,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             @Override
             public void run() {
                 try {
-                    File f = bj.getDelegate().getResultArchive();
+                    File f = bj.getDelegate().getResultArchive(http);
                     String resultArchiveRef = files.addAsFile(f);
                     bj.updateResultArchiveRef(resultArchiveRef);
                     bj.updateStatus(BaseJob.Status.DONE);
@@ -188,7 +190,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
 
     @Override
     protected Handler getStatusPage() {
-        return new BalancingStatusPage(jobs, delegates, startTime);
+        return new BalancingStatusPage(jobs, delegates, http, startTime);
     }
 
     private void startBalancingTasks() {

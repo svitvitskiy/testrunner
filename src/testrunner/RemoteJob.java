@@ -27,6 +27,8 @@ public class RemoteJob {
     private String remoteUrl;
     private int retryCounter;
     private File jobArchive;
+    
+    public static final RemoteJob WAIT = new RemoteJob("wait", null);
 
     public RemoteJob(String name, AgentConnection agent) {
         this.name = name;
@@ -86,13 +88,13 @@ public class RemoteJob {
         return resultArchiveRef;
     }
 
-    public File getResultArchive() throws IOException {
+    public File getResultArchive(HttpIface http) throws IOException {
         if (resultArchive != null)
             return resultArchive;
         File temp = File.createTempFile("stan", "cool");
         URL downloadUrl = new URL(new URL(agent.getUrl()), "/download/" + resultArchiveRef + "?option=delete");
         Log.info("[" + name + "] Downloading result from '" + downloadUrl.toExternalForm() + "'");
-        try (InputStream is = Util.openUrlStream(downloadUrl, 1000, 3000)) {
+        try (InputStream is = http.openUrlStream(downloadUrl)) {
             FileUtils.copyInputStreamToFile(is, temp);
         }
         resultArchive = temp;

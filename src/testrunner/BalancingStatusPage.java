@@ -2,12 +2,15 @@ package testrunner;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintStream;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +19,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.IOUtils;
+import org.thymeleaf.context.Context;
 
 import testrunner.AgentConnection.Event;
 
@@ -23,10 +27,12 @@ public class BalancingStatusPage implements BaseAgent.Handler {
     private List<BaseJob> jobs;
     private List<AgentConnection> delegates;
     private long startTime;
+    private HttpIface http;
 
-    public BalancingStatusPage(List<BaseJob> jobs, List<AgentConnection> delegates, long startTime) {
+    public BalancingStatusPage(List<BaseJob> jobs, List<AgentConnection> delegates, HttpIface http, long startTime) {
         this.jobs = jobs;
         this.delegates = delegates;
+        this.http = http;
         this.startTime = startTime;
     }
 
@@ -35,76 +41,91 @@ public class BalancingStatusPage implements BaseAgent.Handler {
         String requestURI = request.getRequestURI();
         List<AgentConnection> safeCopy = Util.safeCopy(delegates);
         if (requestURI.startsWith("/proxy")) {
-            int idx = Integer.parseInt(requestURI.replace("/proxy/", ""));
-            if (safeCopy.size() <= idx) {
-                return;
-            }
-            AgentConnection remote = safeCopy.get(idx);
-            Log.info("Proxying remote url: '" + remote.getUrl() + "'");
-            try (InputStream is = Util.openUrlStream(new URL(remote.getUrl()), 1000, 3000)) {
-                IOUtils.copy(is, response.getOutputStream());
-            }
+            proxy(response, requestURI, safeCopy);
         } else {
             String action = request.getParameter("action");
             if ("wipejobs".equals(action)) {
-                synchronized (jobs) {
-                    for (ListIterator<BaseJob> it = jobs.listIterator(); it.hasNext();) {
-                        BaseJob baseJob = it.next();
-                        if (baseJob.getStatus() == BaseJob.Status.DONE)
-                            it.remove();
-                    }
-                }
-                redirectHome(response);
+                wipeJobs(response);
             } else if ("restart".equals(action)) {
-                redirectHome(response);
-                exitIn1Second();
+                restart(response);
             } else if ("rerun".equals(action)) {
-                String jobName = request.getParameter("job");
-                boolean found = false;
-                for (BaseJob baseJob : Util.safeCopy(jobs)) {
-                    if (jobName.equals(baseJob.getName())) {
-                        Log.info("[" + jobName + "] rerunning.");
-                        found = true;
-                        baseJob.updateStatus(BaseJob.Status.NEW);
-                        ((BalancingJob) baseJob).eraseDelegate();
-                        break;
-                    }
-                }
-                if (!found) {
-                    Log.info("[" + jobName + "] Couldn't rerun, job not found.");
-                }
-                redirectHome(response);
+                rerunJob(request, response);
             } else {
-                try (InputStream is = this.getClass().getClassLoader()
-                        .getResourceAsStream("testrunner/balancingstatus.html")) {
-                    String templ = IOUtils.toString(is);
-
-                    StringBuilder sb = new StringBuilder();
-                    List<BaseJob> tmp = Util.safeCopy(jobs);
-                    sb.append("<div>Start time: "
-                            + new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ").format(new Date(startTime)) + "</div>");
-                    sb.append("<table class=\"delegates\" cellpadding=\"0\" cellspacing=\"0\">");
-                    int i = 0;
-                    for (AgentConnection agentConnection : safeCopy) {
-                        sb.append("<tr><td>Url</td><td><a href=\"/proxy/" + i + "\">" + agentConnection.getUrl()
-                                + "</a></td></tr>");
-                        sb.append("<tr><td>Available CPU</td><td>" + agentConnection.getAvailableCPU() + "</td></tr>");
-                        sb.append("<tr><td>Total running jobs</td><td>" + agentConnection.getTotalRunningJobs()
-                                + "</td></tr>");
-                        sb.append("<tr><td>Online</td><td>" + agentConnection.isOnline() + "</td></tr>");
-                        sb.append("<tr><td colspan=\"2\">");
-                        jobList(sb, tmp, agentConnection.getUrl());
-                        sb.append("</td></tr>");
-                        sb.append("<tr><td>Events</td><td>" + listEvents(agentConnection) + "</td></tr>");
-                        ++i;
-                    }
-                    sb.append("</table>");
-                    unscheduled(sb, tmp);
-                    templ = templ.replace("|||BODY|||", sb.toString());
-
-                    new PrintStream(response.getOutputStream()).print(templ);
-                }
+                displayStatus(response, safeCopy);
             }
+        }
+    }
+
+    private void displayStatus(HttpServletResponse response, List<AgentConnection> safeCopy) throws IOException {
+        Context context = new Context();
+        context.setVariable("startTime",
+                new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ").format(new Date(startTime)));
+        context.setVariable("version", new Util().getVersion());
+        List<Object> agents = new ArrayList<Object>();
+        int i = 0;
+        List<BaseJob> tmp = Util.safeCopy(jobs);
+        for (AgentConnection agentConnection : safeCopy) {
+            Map<String, Object> agent = new HashMap<String, Object>();
+            agent.put("url", "/proxy/" + i);
+            agent.put("name", agentConnection.getUrl());
+            agent.put("availableCPU", agentConnection.getAvailableCPU());
+            agent.put("totalJobs", agentConnection.getTotalRunningJobs());
+            agent.put("online", agentConnection.isOnline() ? "YES" : "NO");
+            agent.put("jobs", jobList(tmp, agentConnection.getUrl()));
+            agent.put("events", listEvents(agentConnection));
+            agents.add(agent);
+            ++i;
+        }
+        context.setVariable("agents", agents);
+        context.setVariable("unsched", unscheduled(context, tmp));
+
+        Util.processTemplate(response, context, "testrunner/balancingstatus.html");
+    }
+
+    private void rerunJob(HttpServletRequest request, HttpServletResponse response) {
+        String jobName = request.getParameter("job");
+        boolean found = false;
+        for (BaseJob baseJob : Util.safeCopy(jobs)) {
+            if (jobName.equals(baseJob.getName())) {
+                Log.info("[" + jobName + "] rerunning.");
+                found = true;
+                baseJob.updateStatus(BaseJob.Status.NEW);
+                ((BalancingJob) baseJob).eraseDelegate();
+                break;
+            }
+        }
+        if (!found) {
+            Log.info("[" + jobName + "] Couldn't rerun, job not found.");
+        }
+        redirectHome(response);
+    }
+
+    private void restart(HttpServletResponse response) {
+        redirectHome(response);
+        exitIn1Second();
+    }
+
+    private void wipeJobs(HttpServletResponse response) {
+        synchronized (jobs) {
+            for (ListIterator<BaseJob> it = jobs.listIterator(); it.hasNext();) {
+                BaseJob baseJob = it.next();
+                if (baseJob.getStatus() == BaseJob.Status.DONE)
+                    it.remove();
+            }
+        }
+        redirectHome(response);
+    }
+
+    private void proxy(HttpServletResponse response, String requestURI, List<AgentConnection> safeCopy)
+            throws IOException, MalformedURLException {
+        int idx = Integer.parseInt(requestURI.replace("/proxy/", ""));
+        if (safeCopy.size() <= idx) {
+            return;
+        }
+        AgentConnection remote = safeCopy.get(idx);
+        Log.info("Proxying remote url: '" + remote.getUrl() + "'");
+        try (InputStream is = http.openUrlStream(new URL(remote.getUrl()))) {
+            IOUtils.copy(is, response.getOutputStream());
         }
     }
 
@@ -123,52 +144,45 @@ public class BalancingStatusPage implements BaseAgent.Handler {
         response.addHeader("Location", "/");
     }
 
-    private String listEvents(AgentConnection agentConnection) {
-        StringBuilder sb = new StringBuilder();
+    private List<Object> listEvents(AgentConnection agentConnection) {
+        List<Object> result = new ArrayList<Object>();
         for (Event event : agentConnection.getEvents()) {
-            sb.append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ").format(new Date(event.getTime())) + ": "
-                    + event.getType() + "<br/>");
+            Map<String, String> evt = new HashMap<String, String>();
+            evt.put("date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ").format(new Date(event.getTime())));
+            evt.put("type", String.valueOf(event.getType()));
+            result.add(evt);
         }
-        return sb.toString();
+        return result;
     }
 
-    private void unscheduled(StringBuilder sb, List<BaseJob> tmp) {
-        sb.append("<table>");
-        sb.append("<tr><td colspan=\"6\">Unscheduled jobs: </td></tr>");
-        for (int i = 0; i < tmp.size(); i += 6) {
-            sb.append("<tr>");
-            for (int j = 0; j < Math.min(tmp.size() - i, 6); j++) {
-                BalancingJob bj = (BalancingJob) tmp.get(i + j);
-                if (bj.getDelegate() != null)
-                    continue;
-                sb.append("<td>" + bj.getName() + "</td>");
+    private List<String> unscheduled(Context context, List<BaseJob> tmp) {
+        List<String> result = new ArrayList<String>();
+        for (BaseJob baseJob : tmp) {
+            BalancingJob bj = (BalancingJob) baseJob;
+            if (bj.getDelegate() == null) {
+                result.add(bj.getName());
             }
-            sb.append("</tr>");
         }
-        sb.append("</table>");
+        return result;
     }
 
-    private void jobList(StringBuilder sb, List<BaseJob> tmp, String agentUrl) {
-        sb.append("<table class=\"jobs\" cellpadding=\"0\" cellspacing=\"0\">");
-        sb.append(
-                "<tr><td>Name</td><td>Status</td><td>Downloading?</td><td>Job archive</td><td>Result archive</td><td>Actions</td></tr>");
+    private List<Object> jobList(List<BaseJob> tmp, String agentUrl) {
+        List<Object> result = new ArrayList<Object>();
         for (BaseJob baseJob : tmp) {
             BalancingJob bj = (BalancingJob) baseJob;
             if (bj.getDelegate() == null || !agentUrl.equals(bj.getDelegate().getAgent().getUrl()))
                 continue;
-            sb.append("<tr>");
-            sb.append("<td>" + baseJob.getName() + "</td>");
-            sb.append("<td>" + baseJob.getStatus() + "</td>");
-            sb.append("<td>" + (bj.isDownloading() ? "YES" : "NO") + "</td>");
-            sb.append("<td>" + valOrNa(baseJob.getJobArchiveRef()) + "</td>");
-            sb.append("<td>" + valOrNa(baseJob.getResultArchiveRef()) + "</td>");
-            sb.append("<td><a href=\"/?action=rerun&job=" + baseJob.getName() + "\">rerun</a></td>");
-            sb.append("</tr>");
+            Map<String, Object> map = new HashMap<String, Object>();
+            map.put("name", baseJob.getName());
+            map.put("status", baseJob.getStatus());
+            map.put("downloading", bj.isDownloading() ? "YES" : "NO");
+            map.put("jobArchiveUrl", "/download/" + bj.getJobArchiveRef());
+            map.put("jobArchiveName", bj.getJobArchiveRef());
+            map.put("resultArchiveUrl", "/download/" + bj.getResultArchiveRef());
+            map.put("resultArchiveName", bj.getResultArchiveRef());
+            map.put("rerunUrl", "/?action=rerun&job=" + bj.getName());
+            result.add(map);
         }
-        sb.append("</table>");
-    }
-
-    private String valOrNa(String val) {
-        return val == null ? "N/A" : "<a href=\"/download/" + val + "\">" + val + "</a>";
+        return result;
     }
 }

@@ -18,12 +18,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.entity.mime.MultipartEntity;
-import org.apache.http.entity.mime.content.FileBody;
-import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.conn.HttpHostConnectException;
 import org.apache.http.util.EntityUtils;
 
 import com.google.gson.JsonElement;
@@ -42,6 +37,7 @@ public class AgentConnection {
     private List<Event> events = new ArrayList<Event>();
     private int offlineCounter;
     private boolean autoRetry;
+    private HttpIface http;
 
     public static enum EventType {
         UP, DOWN
@@ -65,10 +61,11 @@ public class AgentConnection {
         }
     }
 
-    public AgentConnection(String url, boolean autoRetry, ScheduledExecutorService executor) {
+    public AgentConnection(String url, boolean autoRetry, ScheduledExecutorService executor, HttpIface http) {
         this.url = url;
         this.autoRetry = autoRetry;
         this.executor = executor;
+        this.http = http;
         this.jobs = new ArrayList<RemoteJob>();
     }
 
@@ -81,11 +78,15 @@ public class AgentConnection {
                 } catch (Exception e) {
                     if (online == true) {
                         connectiondDown();
-                        Log.error("updating job status for an agent '" + url + "'");
+                        if (!(e instanceof HttpHostConnectException)) {
+                            Log.error("updating job status for an agent '" + url + "'");
+                        }
                     }
                     online = false;
                     ++offlineCounter;
-                    e.printStackTrace(System.out);
+                    if (!(e instanceof HttpHostConnectException)) {
+                        e.printStackTrace(System.out);
+                    }
                 }
             }
         }, 0, 1, TimeUnit.SECONDS);
@@ -99,7 +100,8 @@ public class AgentConnection {
     private void updateJobStatus() throws MalformedURLException, IOException {
         URL url2 = new URL(new URL(url), "/status");
         Set<String> updated = new HashSet<String>();
-        try (InputStream is = Util.openUrlStream(url2, 1000, 1000)) {
+
+        try (InputStream is = http.openUrlStream(url2)) {
             if (online == false) {
                 connectionUp();
             }
@@ -138,11 +140,13 @@ public class AgentConnection {
     private void connectionUp() {
         offlineCounter = 0;
         events.add(new Event(EventType.UP, System.currentTimeMillis()));
+        System.out.println((char) 27 + "[92m+ " + url + " UP" + (char) 27 + "[0m");
     }
 
     private void connectiondDown() {
         offlineCounter = 0;
         events.add(new Event(EventType.DOWN, System.currentTimeMillis()));
+        System.out.println((char) 27 + "[95m+ " + url + " DOWN" + (char) 27 + "[0m");
     }
 
     private boolean updateJob(JsonObject job) {
@@ -183,6 +187,8 @@ public class AgentConnection {
     }
 
     public RemoteJob scheduleJob(String name, File jobArchive) throws IOException {
+        if (!online)
+            return RemoteJob.WAIT;
         String fileid = uploadJobArchive(jobArchive);
         Log.info("[" + name + "] file id:" + fileid);
         if (!scheduleJob(name, fileid))
@@ -190,6 +196,28 @@ public class AgentConnection {
 
         RemoteJob job = new RemoteJob(name, this);
         job.updateJobArchive(jobArchive);
+
+        if (job != null) {
+            synchronized (jobs) {
+                jobs.add(job);
+            }
+        }
+
+        return job;
+    }
+
+    public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, String manifest, String myUrl)
+            throws IOException {
+        if (!online)
+            return null;
+        String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
+                + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest + "}";
+        if (!doScheduleJobArchive(name, json))
+            return null;
+        RemoteJob job = new RemoteJob(name, this);
+        job.updateJobArchiveRef(jobArchiveRef);
+        job.updateManifest(manifest);
+        job.updateRemoteUrl(myUrl);
 
         if (job != null) {
             synchronized (jobs) {
@@ -210,23 +238,18 @@ public class AgentConnection {
     }
 
     private boolean scheduleJob(String name, String fileid) throws IOException {
-        HttpClient httpclient = new DefaultHttpClient();
-        HttpPost httpPost = new HttpPost(new URL(new URL(url), "/new").toExternalForm());
-
         String json = "{\"jobName\":\"" + name + "\",\"jobArchiveRef\":\"" + fileid + "\"}";
-        return doScheduleJobArchive(name, httpclient, httpPost, json);
+        return doScheduleJobArchive(name, json);
     }
 
-    private boolean doScheduleJobArchive(String name, HttpClient httpclient, HttpPost httpPost, String json)
+    private boolean doScheduleJobArchive(String name, String json)
             throws UnsupportedEncodingException, IOException, ClientProtocolException {
-        StringEntity entity = new StringEntity(json);
-        httpPost.setEntity(entity);
-        httpPost.setHeader("Accept", "application/json");
-        httpPost.setHeader("Content-type", "application/json");
-        HttpResponse response = httpclient.execute(httpPost);
+        URL newUrl = new URL(new URL(url), "/new");
+        Log.debug("[" + name + "] scheduling job with '" + newUrl.toExternalForm() + "'");
+        HttpResponse response = http.postString(newUrl, json);
 
+        String responseBody = EntityUtils.toString(response.getEntity());
         if (response.getStatusLine().getStatusCode() != 200) {
-            String responseBody = EntityUtils.toString(response.getEntity());
             JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
             Log.error("[" + name + "] " + jsonObject.get("message").getAsString());
             return false;
@@ -234,43 +257,8 @@ public class AgentConnection {
         return true;
     }
 
-    public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, String manifest, String myUrl)
-            throws IOException {
-        HttpClient httpclient = new DefaultHttpClient();
-        String newUrl = new URL(new URL(url), "/new").toExternalForm();
-        HttpPost httpPost = new HttpPost(newUrl);
-
-        Log.debug("[" + name + "] scheduling job with '" + newUrl + "'");
-
-        String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
-                + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest + "}";
-        if (!doScheduleJobArchive(name, httpclient, httpPost, json))
-            return null;
-        RemoteJob job = new RemoteJob(name, this);
-        job.updateJobArchiveRef(jobArchiveRef);
-        job.updateManifest(manifest);
-        job.updateRemoteUrl(myUrl);
-
-        if (job != null) {
-            synchronized (jobs) {
-                jobs.add(job);
-            }
-        }
-
-        return job;
-    }
-
     private String uploadJobArchive(File jobArchive) throws IOException {
-        HttpClient httpclient = new DefaultHttpClient();
-        HttpPost httpPost = new HttpPost(new URL(new URL(url), "/upload").toExternalForm());
-
-        FileBody uploadFilePart = new FileBody(jobArchive);
-        MultipartEntity reqEntity = new MultipartEntity();
-        reqEntity.addPart("file", uploadFilePart);
-        httpPost.setEntity(reqEntity);
-
-        HttpResponse response = httpclient.execute(httpPost);
-
+        HttpResponse response = http.upload(new URL(new URL(url), "/upload"), jobArchive, "file");
         String responseBody = EntityUtils.toString(response.getEntity());
         JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
         if (response.getStatusLine().getStatusCode() == 200) {
@@ -290,18 +278,25 @@ public class AgentConnection {
         String agentUrl = args[0];
         File jobArchive = new File(args[1]);
 
-        AgentConnection agent = new AgentConnection(agentUrl, true, executor2);
+        HttpIface http2 = new HttpIface(1000 /* connectionTimeout */, 20000 /* socketTimeout */);
+        AgentConnection agent = new AgentConnection(agentUrl, true, executor2, http2);
         agent.scheduleStatusCheck();
-        RemoteJob job = agent.scheduleJob(jobArchive.getName().replaceAll("\\.zip$", ""), jobArchive);
-        if (job == null) {
-            System.out.println("Couldn't schedule a job");
-            return;
-        }
+        RemoteJob job;
+        do {
+            job = agent.scheduleJob(jobArchive.getName().replaceAll("\\.zip$", ""), jobArchive);
+            if (job == null) {
+                System.out.println("Couldn't schedule a job");
+                return;
+            }
+            if (job == RemoteJob.WAIT) {
+                Thread.sleep(1000);
+            }
+        } while (job == RemoteJob.WAIT);
         job.waitDone();
         System.out.println("[" + job.getName() + "] Job finished: " + job.getStatus());
         System.out.println("[" + job.getName() + "] Result archive: " + job.getResultArchiveRef());
         executor2.shutdown();
-        job.getResultArchive().renameTo(new File(args[2]));
+        job.getResultArchive(http2).renameTo(new File(args[2]));
     }
 
     public List<Event> getEvents() {

@@ -22,6 +22,7 @@ public class LeafAgent extends BaseAgent {
     private ExecutorService executor;
     private LeafJob.JobFactory jobFactory;
     private long startTime;
+    private HttpIface http;
 
     private LeafAgent(File baseDir) {
         int nThreads = Runtime.getRuntime().availableProcessors();
@@ -43,6 +44,7 @@ public class LeafAgent extends BaseAgent {
         };
 
         tp.scheduleAtFixedRate(runnable, 100, 100, TimeUnit.MILLISECONDS);
+        this.http = new HttpIface(1000 /*connectionTimeout*/, 20000 /*socketTimeout*/);
         startTime = System.currentTimeMillis();
     }
 
@@ -53,7 +55,7 @@ public class LeafAgent extends BaseAgent {
             public void run() {
                 try {
                     job.updateStatus(Status.PROCESSING);
-                    job.run();
+                    job.run(http);
                     job.updateStatus(Status.DONE);
                 } catch (Exception e) {
                     e.printStackTrace(System.out);

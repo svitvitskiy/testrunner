@@ -3,8 +3,6 @@ package testrunner;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.MalformedURLException;
 import java.net.URL;
 
 import org.apache.commons.io.FileUtils;
@@ -12,8 +10,6 @@ import org.apache.commons.io.FileUtils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
-import net.lingala.zip4j.core.ZipFile;
 
 /**
  * A wrapper for a job. It will run a job presented as a zip archive with a
@@ -65,18 +61,18 @@ public class LeafJob extends BaseJob {
         this.processingBase = processingBase;
     }
 
-    public void run() throws Exception {
+    public void run(HttpIface http) throws Exception {
         // Dearchive the job
         Log.info("[" + getName() + "] Running job.");
         if (getJobArchiveRef() == null && getRemoteJobArchiveRef() != null) {
-            downloadJobArchive();
+            downloadJobArchive(http);
         }
         File jobArchive = files.get(getJobArchiveRef());
         if (jobArchive == null)
             throw new Exception(
                     "Could not resolve incoming job archive for job " + getName() + ":" + getJobArchiveRef());
         File jobBase = new File(processingBase, getName());
-        new ZipFile(jobArchive).extractAll(jobBase.getAbsolutePath());
+        ZipUtils.extractAll(jobArchive, jobBase);
 
         // Read the manifest
         File manifest = new File(jobBase, "manifest.json");
@@ -95,6 +91,7 @@ public class LeafJob extends BaseJob {
         ZipUtils.compressDir(jobBase, tmp);
         updateResultArchiveRef(files.addAsFile(tmp));
         tmp.delete();
+        FileUtils.deleteDirectory(jobBase);
 
         // Deleting the input file
         Log.info("[" + getName() + "] Deleting job archive '" + getJobArchiveRef() + "'.");
@@ -103,11 +100,11 @@ public class LeafJob extends BaseJob {
         Log.info("[" + getName() + "] Finished job.");
     }
 
-    private void downloadJobArchive() throws IOException {
+    private void downloadJobArchive(HttpIface http) throws IOException {
         Log.info("[" + getName() + "] Downloading job archive '" + getRemoteJobArchiveRef() + "' from '"
                 + getRemoteUrl() + "'.");
-        try (InputStream is = Util
-                .openUrlStream(new URL(new URL(getRemoteUrl()), "/download/" + getRemoteJobArchiveRef()), 1000, 3000)) {
+        try (InputStream is = http
+                .openUrlStream(new URL(new URL(getRemoteUrl()), "/download/" + getRemoteJobArchiveRef()))) {
             String jobArchiveRef = files.addAsInputStream(is);
             updateJobArchiveRef(jobArchiveRef);
         }

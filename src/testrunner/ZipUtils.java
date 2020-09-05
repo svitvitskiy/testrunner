@@ -47,7 +47,7 @@ public class ZipUtils {
             return result;
         }
     }
-    
+
     public static String extractFileTo(File zipFile, String filePath, File toFile) throws IOException {
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
             ZipEntry zipEntry = zis.getNextEntry();
@@ -100,5 +100,16 @@ public class ZipUtils {
             zis.closeEntry();
         }
         return ret;
+    }
+
+    public static void extractAll(File zipFile, File tgtFolder) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
+            ZipEntry zipEntry = zis.getNextEntry();
+            while (zipEntry != null) {
+                FileUtils.copyToFile(zis, new File(tgtFolder, zipEntry.getName()));
+                zipEntry = zis.getNextEntry();
+            }
+            zis.closeEntry();
+        }
     }
 }

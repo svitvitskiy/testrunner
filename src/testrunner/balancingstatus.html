@@ -34,6 +34,44 @@ td {
 </head>
 <body>
 <a href="/?action=wipejobs">Wipe done jobs</a> | <a href="/?action=restart">Restart agent</a>
-|||BODY|||
+<div>Start time: <span th:text="${startTime}">Start time</span></div>
+<div>Version: <span th:text="${version}">None</span></div>
+<div>Agents found: <span th:text="${#lists.size(agents)}">0</span></div>
+<table class="delegates" cellpadding="0" cellspacing="0">
+<th:block th:each="agent: ${agents}">
+<tr><td>Url</td><td><a th:href="${agent.url}" th:text="${agent.name}"></a></td></tr>
+<tr><td>Available CPU</td><td th:text="${agent.availableCPU}">0</td></tr>
+<tr><td>Total running jobs</td><td th:text="${agent.totalJobs}">0</td></tr>
+<tr><td>Online</td><td th:text="${agent.online}">NO</td></tr>
+<tr><td colspan="2">
+  <table class="jobs" cellpadding="0" cellspacing="0">
+  <tr><td>Name</td><td>Status</td><td>Downloading?</td><td>Job archive</td><td>Result archive</td><td>Actions</td></tr>
+  <tr th:each="job: ${agent.jobs}">
+  <td th:text="${job.name}">Job name</td>
+  <td th:text="${job.status}">Status</td>
+  <td th:text="${job.downloading}">No</td>
+  <td><a th:href="${job.jobArchiveUrl}" th:text="${job.jobArchiveName}">Url</a></td>
+  <td><a th:href="${job.resultArchiveUrl}" th:text="${job.resultArchiveName}">Url</a></td>
+  <td><a th:href="${job.rerunUrl}">rerun</a></td>
+  </tr>
+</table>
+</td></tr>
+<tr><td>Events</td><td>
+<div th:each="event: ${agent.events}"><span th:text="${event.date}"></span>&nbsp;<span th:text="${event.type}"></span></div>
+</td></tr>
+</th:block>
+</table>
+
+<table>
+<tr th:each="i : ${#numbers.sequence( 0, #lists.size(unsched)-1, 6)}">
+  <td th:text="${unsched[i+0]}"   th:if="${i+0 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:text="${unsched[i+1]}" th:if="${i+1 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:text="${unsched[i+2]}" th:if="${i+2 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:text="${unsched[i+3]}" th:if="${i+3 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:text="${unsched[i+4]}" th:if="${i+4 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:text="${unsched[i+5]}" th:if="${i+5 < #lists.size(unsched)}">&nbsp;</td>
+</tr>
+</table>
+
 </body>
 </html>
