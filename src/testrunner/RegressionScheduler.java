@@ -17,19 +17,29 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import testrunner.CompareScheduler.JobResult;
-
 public class RegressionScheduler implements TestScheduler {
     static class JobRequest extends TestScheduler.JobRequest {
         private int encIdx;
+        private int strmIdx;
+        private int qpIdx;
 
-        public JobRequest(String jobName, File jobArchive, int encIdx) {
+        public JobRequest(String jobName, File jobArchive, int encIdx, int strmIdx, int qpIdx) {
             super(jobName, jobArchive);
             this.encIdx = encIdx;
+            this.strmIdx = strmIdx;
+            this.qpIdx = qpIdx;
         }
 
         public int getEncIdx() {
             return encIdx;
+        }
+
+        public int getStrmIdx() {
+            return strmIdx;
+        }
+
+        public int getQpIdx() {
+            return qpIdx;
         }
     }
 
@@ -52,8 +62,8 @@ public class RegressionScheduler implements TestScheduler {
         private String profile;
         private int maxFrames;
         private String codec;
-        private String stream;
-        private int qp;
+        private String[] streams;
+        private String[] qps;
 
         private static String[] parseArray(JsonArray encNames) {
             String[] encName = new String[encNames.size()];
@@ -100,17 +110,20 @@ public class RegressionScheduler implements TestScheduler {
                 return null;
             }
             String[] encoders = parseArray(jsonElement0.getAsJsonArray());
+            String[] streams = parseArray(jsonElement4.getAsJsonArray());
+            String[] qps = parseArray(jsonElement5.getAsJsonArray());
             return new Descriptor(encoders, jsonElement1.getAsString(), jsonElement2.getAsInt(),
-                    jsonElement3.getAsString(), jsonElement4.getAsString(), jsonElement5.getAsInt());
+                    jsonElement3.getAsString(), streams, qps);
         }
 
-        public Descriptor(String[] encoders, String profile, int maxFrames, String codec, String stream, int qp) {
+        public Descriptor(String[] encoders, String profile, int maxFrames, String codec, String[] streams,
+                String[] qps) {
             this.encoders = encoders;
             this.profile = profile;
             this.maxFrames = maxFrames;
             this.codec = codec;
-            this.stream = stream;
-            this.qp = qp;
+            this.streams = streams;
+            this.qps = qps;
         }
 
         public String[] getEncoders() {
@@ -129,12 +142,12 @@ public class RegressionScheduler implements TestScheduler {
             return codec;
         }
 
-        public String getStream() {
-            return stream;
+        public String[] getStreams() {
+            return streams;
         }
 
-        public int getQp() {
-            return qp;
+        public String[] getQps() {
+            return qps;
         }
     }
 
@@ -156,11 +169,20 @@ public class RegressionScheduler implements TestScheduler {
     public List<TestScheduler.JobRequest> generateJobRequests(File requestsFldr) {
         List<testrunner.TestScheduler.JobRequest> result = new ArrayList<TestScheduler.JobRequest>();
         for (int encIdx = 0; encIdx < descriptor.getEncoders().length; encIdx++) {
-            File encBinF = new File(descriptor.getEncoders()[encIdx]);
-            String encBaseName = encBinF.getName();
-            String jobName = "test_" + encBaseName + "_" + String.format("%06d", (int) (Math.random() * 1000000));
+            for (int strmIdx = 0; strmIdx < descriptor.getStreams().length; strmIdx++) {
+                for (int qpIdx = 0; qpIdx < descriptor.getQps().length; qpIdx++) {
+                    File encBinF = new File(descriptor.getEncoders()[encIdx]);
+                    String stream = descriptor.getStreams()[strmIdx];
+                    String qp = descriptor.getQps()[qpIdx];
 
-            result.add(new JobRequest(jobName, new File(requestsFldr, jobName + ".zip"), encIdx));
+                    String encBaseName = encBinF.getName();
+                    String jobName = "test_" + encBaseName + "_" + getOfName(stream) + "_" + qp + "_"
+                            + String.format("%06d", (int) (Math.random() * 1000000));
+
+                    result.add(
+                            new JobRequest(jobName, new File(requestsFldr, jobName + ".zip"), encIdx, strmIdx, qpIdx));
+                }
+            }
         }
         return result;
     }
@@ -170,18 +192,19 @@ public class RegressionScheduler implements TestScheduler {
         JobRequest jobRequest = (JobRequest) jobRequest_;
         try {
             StringBuilder runSh = new StringBuilder();
-            String fileName = new File(descriptor.getStream()).getName();
+            String stream = descriptor.getStreams()[jobRequest.getStrmIdx()];
+            String fileName = new File(stream).getName();
 
             int width = CompareScheduler.workoutW(fileName);
             int height = CompareScheduler.workoutH(fileName);
 
             File encBinF = new File(descriptor.getEncoders()[jobRequest.getEncIdx()]);
-            String ofName = fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");
+            String ofName = getOfName(stream);
 
             runSh.append("FILENAME=\"" + fileName + "\"\n");
             runSh.append("ENC_BN=\"" + encBinF.getName() + "\"\n");
             runSh.append("PROFILE=\"" + descriptor.getProfile() + "\"\n");
-            runSh.append("MINQ=\"" + descriptor.getQp() + "\"\n");
+            runSh.append("MINQ=\"" + descriptor.getQps()[jobRequest.getQpIdx()] + "\"\n");
             runSh.append("MAX_FRAMES=\"" + descriptor.getMaxFrames() + "\"\n");
             runSh.append("OF_BN=\"" + ofName + "\"\n");
             runSh.append("WIDTH=\"" + width + "\"\n");
@@ -211,9 +234,7 @@ public class RegressionScheduler implements TestScheduler {
         JobRequest jobRequest = (JobRequest) jobRequest_;
         try {
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
-            String fileName = new File(descriptor.getStream()).getName();
-
-            String ofName = fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");
+            String ofName = getOfName(descriptor.getStreams()[jobRequest.getStrmIdx()]);
             File f1 = File.createTempFile("cool", "stan");
             File f2 = File.createTempFile("cool", "stan");
 
@@ -231,8 +252,8 @@ public class RegressionScheduler implements TestScheduler {
 
             String encBaseName = new File(descriptor.getEncoders()[jobRequest.getEncIdx()]).getName();
 
-            System.out.println((char) 27 + "[92m+ " + ofName + "@" + descriptor.getQp() + "(" + encBaseName + ")"
-                    + (char) 27 + "[0m");
+            System.out.println((char) 27 + "[92m+ " + ofName + "@" + descriptor.getQps()[jobRequest.getQpIdx()] + "("
+                    + encBaseName + ")" + (char) 27 + "[0m");
 
             return new JobResult(jobRequest, true, stdout, contentEquals);
         } catch (Exception e) {
@@ -240,6 +261,11 @@ public class RegressionScheduler implements TestScheduler {
             e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), false);
         }
+    }
+
+    private String getOfName(String stream) {
+        String fileName = new File(stream).getName();
+        return fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");
     }
 
     @Override
@@ -253,8 +279,7 @@ public class RegressionScheduler implements TestScheduler {
                     System.out.println(
                             descriptor.getEncoders()[req.getEncIdx()] + ": " + (jr.isMatch() ? "MATCH" : "MISMATCH"));
                 } else {
-                    System.out.println(
-                            descriptor.getEncoders()[req.getEncIdx()] + ": ERROR PROCESSING THE JOB");
+                    System.out.println(descriptor.getEncoders()[req.getEncIdx()] + ": ERROR PROCESSING THE JOB");
                     String[] split = jr.getStdout().split("\n");
                     String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
                     System.out.println("    " + String.join("\n    ", copyOfRange));
