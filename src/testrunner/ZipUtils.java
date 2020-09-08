@@ -48,19 +48,19 @@ public class ZipUtils {
         }
     }
 
-    public static String extractFileTo(File zipFile, String filePath, File toFile) throws IOException {
+    public static boolean extractFileTo(File zipFile, String filePath, File toFile) throws IOException {
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
             ZipEntry zipEntry = zis.getNextEntry();
-            String result = null;
             while (zipEntry != null) {
                 if (filePath.equals(zipEntry.getName())) {
-                    FileUtils.copyInputStreamToFile(zis, toFile);
+                    FileUtils.copyToFile(zis, toFile);
+                    return true;
                 }
                 zipEntry = zis.getNextEntry();
             }
             zis.closeEntry();
-            return result;
         }
+        return false;
     }
 
     public static void createArchive(Map<String, Object> map, File output) throws IOException {

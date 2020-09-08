@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
+import testrunner.CompareScheduler.JobResult;
 
 public class RegressionScheduler implements TestScheduler {
     static class JobRequest extends TestScheduler.JobRequest {
@@ -155,7 +158,7 @@ public class RegressionScheduler implements TestScheduler {
         for (int encIdx = 0; encIdx < descriptor.getEncoders().length; encIdx++) {
             File encBinF = new File(descriptor.getEncoders()[encIdx]);
             String encBaseName = encBinF.getName();
-            String jobName = "test_" + encBaseName + "_" + String.format("%6d", Math.random() * 1000000);
+            String jobName = "test_" + encBaseName + "_" + String.format("%06d", (int) (Math.random() * 1000000));
 
             result.add(new JobRequest(jobName, new File(requestsFldr, jobName + ".zip"), encIdx));
         }
@@ -173,7 +176,7 @@ public class RegressionScheduler implements TestScheduler {
             int height = CompareScheduler.workoutH(fileName);
 
             File encBinF = new File(descriptor.getEncoders()[jobRequest.getEncIdx()]);
-            String ofName = descriptor.getStream().replaceAll("\\.[0-9a-zA-Z]+$", "");
+            String ofName = fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");
 
             runSh.append("FILENAME=\"" + fileName + "\"\n");
             runSh.append("ENC_BN=\"" + encBinF.getName() + "\"\n");
@@ -208,12 +211,21 @@ public class RegressionScheduler implements TestScheduler {
         JobRequest jobRequest = (JobRequest) jobRequest_;
         try {
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
+            String fileName = new File(descriptor.getStream()).getName();
 
-            String ofName = descriptor.getStream().replaceAll("\\.[0-9a-zA-Z]+$", "");
+            String ofName = fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");
             File f1 = File.createTempFile("cool", "stan");
             File f2 = File.createTempFile("cool", "stan");
-            ZipUtils.extractFileTo(resultArchive, "recon.yuv", f1);
-            ZipUtils.extractFileTo(resultArchive, ofName + "_recon.yuv", f1);
+
+            if (!ZipUtils.extractFileTo(resultArchive, "recon.yuv", f1)) {
+                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain recon file.");
+                return new JobResult(jobRequest, false, stdout, false);
+            }
+
+            if (!ZipUtils.extractFileTo(resultArchive, ofName + "_recon.yuv", f2)) {
+                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain reference recon file.");
+                return new JobResult(jobRequest, false, stdout, false);
+            }
 
             boolean contentEquals = FileUtils.contentEquals(f1, f2);
 
@@ -234,10 +246,23 @@ public class RegressionScheduler implements TestScheduler {
     public void finish(List<TestScheduler.JobResult> results, File baseFldr) throws IOException {
         System.out.println("Report:");
         for (TestScheduler.JobResult r : results) {
-            JobResult jr = (JobResult) r;
-            JobRequest req = (JobRequest) jr.getJobRequest();
-            System.out
-                    .println(descriptor.getEncoders()[req.getEncIdx()] + ": " + (jr.isMatch() ? "MATCH" : "MISMATCH"));
+            if (r instanceof JobResult) {
+                JobResult jr = (JobResult) r;
+                JobRequest req = (JobRequest) jr.getJobRequest();
+                if (jr.isValid()) {
+                    System.out.println(
+                            descriptor.getEncoders()[req.getEncIdx()] + ": " + (jr.isMatch() ? "MATCH" : "MISMATCH"));
+                } else {
+                    System.out.println(
+                            descriptor.getEncoders()[req.getEncIdx()] + ": ERROR PROCESSING THE JOB");
+                    String[] split = jr.getStdout().split("\n");
+                    String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
+                    System.out.println("    " + String.join("\n    ", copyOfRange));
+                }
+            } else {
+                JobRequest req = (JobRequest) r.getJobRequest();
+                System.out.println(descriptor.getEncoders()[req.getEncIdx()] + ": ERROR SCHEDULING THE JOB");
+            }
         }
     }
 }
