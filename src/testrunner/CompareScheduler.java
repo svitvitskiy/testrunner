@@ -9,6 +9,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -100,8 +102,11 @@ public class CompareScheduler implements TestScheduler {
             this.codec = codec;
         }
 
-        public static Descriptor parse(File baseDir, String str) throws IOException {
+        public static Descriptor parse(File baseDir, String str, Map<String, String> params) throws IOException {
             str = str.replace("$HOME", System.getProperty("user.home"));
+            for (Entry<String, String> entry : params.entrySet()) {
+                str = str.replace("$" + entry.getKey(), entry.getValue());
+            }
 
             JsonObject jsonObject = JsonParser.parseString(str).getAsJsonObject();
             String profile = jsonObject.get("profile").getAsString();
@@ -168,7 +173,15 @@ public class CompareScheduler implements TestScheduler {
             return null;
         }
         File file = new File(args[0]);
-        Descriptor descriptor = Descriptor.parse(file.getParentFile(), FileUtils.readFileToString(file));
+        Map<String, String> params = new HashMap<String, String>();
+        if (args.length > 1) {
+            for (int i = 1; i < args.length; i++) {
+                String[] split = args[i].split(":");
+                params.put(split[0], split[1]);
+            }
+        }
+        
+        Descriptor descriptor = Descriptor.parse(file.getParentFile(), FileUtils.readFileToString(file), params);
         return new CompareScheduler(descriptor);
     }
 

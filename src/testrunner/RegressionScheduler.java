@@ -275,11 +275,12 @@ public class RegressionScheduler implements TestScheduler {
             if (r instanceof JobResult) {
                 JobResult jr = (JobResult) r;
                 JobRequest req = (JobRequest) jr.getJobRequest();
+                String prefix = descriptor.getEncoders()[req.getEncIdx()] + " qp:" + descriptor.getQps()[req.getQpIdx()]
+                        + " " + descriptor.getStreams()[req.getStrmIdx()];
                 if (jr.isValid()) {
-                    System.out.println(
-                            descriptor.getEncoders()[req.getEncIdx()] + ": " + (jr.isMatch() ? "MATCH" : "MISMATCH"));
+                    System.out.println(prefix + ": " + (jr.isMatch() ? "MATCH" : "MISMATCH"));
                 } else {
-                    System.out.println(descriptor.getEncoders()[req.getEncIdx()] + ": ERROR PROCESSING THE JOB");
+                    System.out.println(prefix + ": ERROR PROCESSING THE JOB");
                     String[] split = jr.getStdout().split("\n");
                     String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
                     System.out.println("    " + String.join("\n    ", copyOfRange));
