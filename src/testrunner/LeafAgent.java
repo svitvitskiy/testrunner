@@ -86,7 +86,7 @@ public class LeafAgent extends BaseAgent {
     
     @Override
     protected Handler getStatusPage() {
-        return new LeafStatusPage(jobs, startTime);
+        return new LeafStatusPage(jobs, files, startTime);
     }
 
     public static void main(String[] args) throws Exception {
@@ -97,5 +97,10 @@ public class LeafAgent extends BaseAgent {
         int port = Integer.parseInt(args[0]);
         File baseDir = new File(args[1]);
         new LeafAgent(baseDir).startAgent(port);
+    }
+
+    @Override
+    protected Handler getLogHandler() {
+        return new LogHandler(jobs);
     }
 }

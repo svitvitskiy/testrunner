@@ -29,9 +29,9 @@ td {
 <tr><td>Name</td><td>Status</td><td>Job archive</td><td>Result archive</td></tr>
 <tr th:each="job: ${jobs}">
   <td th:text="${job.name}">&nbsp;</td>
-  <td th:text="${job.status}">&nbsp;</td>
-  <td><a th:href="${job.jobArchiveUrl}" th:text="${job.jobArchiveName}">&nbps;</a></td>
-  <td><a th:href="${job.resultArchiveUrl}" th:text="${job.resultArchiveName}">&nbps;</a></td>
+  <td><a th:if="${job.status == 'PROCESSING'}" th:text="${job.status}" th:href="${'/log' + job.name}">&nbsp;</a><span th:unless="${job.status == 'PROCESSING'}" th:text="${job.status}"></span></td>
+  <td><a th:if="${job.jobArchiveUrl}" th:href="${job.jobArchiveUrl}" th:text="${job.jobArchiveName}">&nbps;</a><span th:unless="${job.jobArchiveUrl}" th:text="${job.jobArchiveName}">&nbps;</span></td>
+  <td><a th:if="${job.resultArchiveUrl}" th:href="${job.resultArchiveUrl}" th:text="${job.resultArchiveName}">&nbps;</a><a th:unless="${job.resultArchiveUrl}" th:text="${job.resultArchiveName}">&nbps;</span></td>
 </tr>
 </table>
 </body>

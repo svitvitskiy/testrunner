@@ -27,6 +27,8 @@ public abstract class BaseAgent extends AbstractHandler {
             getDownloadHandler().handle(request, response);
         } else if ("/new".equals(target)) {
             getNewJobHandler().handle(request, response);
+        } else if ("/log".equals(target)) {
+            getLogHandler().handle(request, response);
         } else {
             getStatusPage().handle(request, response);
         }
@@ -53,4 +55,6 @@ public abstract class BaseAgent extends AbstractHandler {
     protected abstract Handler getUploadHandler();
 
     protected abstract Handler getStatusHandler();
+    
+    protected abstract Handler getLogHandler();
 }

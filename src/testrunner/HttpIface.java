@@ -61,12 +61,17 @@ public class HttpIface {
 
     public InputStream openUrlStream(URL url) throws IllegalStateException, IOException {
 
+        HttpResponse response = openConnection(url);
+        return response.getEntity().getContent();
+    }
+
+    public HttpResponse openConnection(URL url) throws IOException, ClientProtocolException {
         CloseableHttpClient client = getClient();
 
         HttpGet httpget = new HttpGet(url.toExternalForm());
         httpget.setConfig(getRequestConfig());
         HttpResponse response = client.execute(httpget);
-        return response.getEntity().getContent();
+        return response;
     }
 
     public HttpResponse upload(URL url, File uploadFile, String name) throws ClientProtocolException, IOException {

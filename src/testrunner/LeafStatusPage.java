@@ -20,9 +20,11 @@ import org.thymeleaf.context.Context;
 public class LeafStatusPage implements BaseAgent.Handler {
     private List<BaseJob> jobs;
     private long startTime;
+    private FileStore fileStore;
 
-    public LeafStatusPage(List<BaseJob> jobs, long startTime) {
+    public LeafStatusPage(List<BaseJob> jobs, FileStore fileStore, long startTime) {
         this.jobs = jobs;
+        this.fileStore = fileStore;
         this.startTime = startTime;
     }
 
@@ -50,9 +52,13 @@ public class LeafStatusPage implements BaseAgent.Handler {
             Map<String, Object> map = new HashMap<String, Object>();
             map.put("name", baseJob.getName());
             map.put("status", baseJob.getStatus());
-            map.put("jobArchiveUrl", "/download/" + lj.getJobArchiveRef());
+            if (fileStore.has(lj.getJobArchiveRef())) {
+                map.put("jobArchiveUrl", "/download/" + lj.getJobArchiveRef());
+            }
             map.put("jobArchiveName", lj.getJobArchiveRef());
-            map.put("resultArchiveUrl", "/download/" + lj.getResultArchiveRef());
+            if (fileStore.has(lj.getResultArchiveRef())) {
+                map.put("resultArchiveUrl", "/download/" + lj.getResultArchiveRef());
+            }
             map.put("resultArchiveName", lj.getResultArchiveRef());
             result.add(map);
         }

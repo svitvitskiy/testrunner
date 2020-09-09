@@ -190,7 +190,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
 
     @Override
     protected Handler getStatusPage() {
-        return new BalancingStatusPage(jobs, delegates, http, startTime);
+        return new BalancingStatusPage(jobs, delegates, http, files, startTime);
     }
 
     private void startBalancingTasks() {
@@ -228,7 +228,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
 
     @Override
     public BaseJob newJob(String name, String jobArchiveRef) {
-        return new BalancingJob(name, jobArchiveRef);
+        return new BalancingJob(name, jobArchiveRef, http);
     }
 
     public static void main(String[] args) throws Exception {
@@ -246,5 +246,10 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     @Override
     public BaseJob newJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq) {
         return null;
+    }
+
+    @Override
+    protected Handler getLogHandler() {
+        return new LogHandler(jobs);
     }
 }

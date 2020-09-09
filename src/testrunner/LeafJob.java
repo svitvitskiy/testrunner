@@ -1,6 +1,8 @@
 package testrunner;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -25,6 +27,7 @@ import com.google.gson.JsonParser;
 public class LeafJob extends BaseJob {
     private File processingBase;
     private FileStore files;
+    private File logFile;
 
     public static class JobFactory implements BaseJob.JobFactory {
         private File processingBase;
@@ -79,8 +82,7 @@ public class LeafJob extends BaseJob {
         if (manifest.exists()) {
             parseManifest(manifest);
         }
-        // Run the script
-        File logFile = new File(jobBase, "stdout.log");
+        logFile = new File(jobBase, "stdout.log");
         Process proc = new ProcessBuilder("/bin/bash", jobBase.getAbsolutePath() + "/run.sh").redirectErrorStream(true)
                 .directory(jobBase).start();
         InputStream is = proc.getInputStream();
@@ -98,6 +100,11 @@ public class LeafJob extends BaseJob {
         files.delete(getJobArchiveRef());
 
         Log.info("[" + getName() + "] Finished job.");
+    }
+    
+    @Override
+    public InputStream getLog() throws IOException {
+        return logFile == null ? null : new FileInputStream(logFile);
     }
 
     private void downloadJobArchive(HttpIface http) throws IOException {

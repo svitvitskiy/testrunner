@@ -28,11 +28,13 @@ public class BalancingStatusPage implements BaseAgent.Handler {
     private List<AgentConnection> delegates;
     private long startTime;
     private HttpIface http;
+    private FileStore fileStore;
 
-    public BalancingStatusPage(List<BaseJob> jobs, List<AgentConnection> delegates, HttpIface http, long startTime) {
+    public BalancingStatusPage(List<BaseJob> jobs, List<AgentConnection> delegates, HttpIface http, FileStore fileStore, long startTime) {
         this.jobs = jobs;
         this.delegates = delegates;
         this.http = http;
+        this.fileStore = fileStore;
         this.startTime = startTime;
     }
 
@@ -176,9 +178,13 @@ public class BalancingStatusPage implements BaseAgent.Handler {
             map.put("name", baseJob.getName());
             map.put("status", baseJob.getStatus());
             map.put("downloading", bj.isDownloading() ? "YES" : "NO");
-            map.put("jobArchiveUrl", "/download/" + bj.getJobArchiveRef());
+            if (fileStore.has(bj.getJobArchiveRef())) {
+                map.put("jobArchiveUrl", "/download/" + bj.getJobArchiveRef());
+            }
             map.put("jobArchiveName", bj.getJobArchiveRef());
-            map.put("resultArchiveUrl", "/download/" + bj.getResultArchiveRef());
+            if (fileStore.has(bj.getResultArchiveRef())) {
+                map.put("resultArchiveUrl", "/download/" + bj.getResultArchiveRef());
+            }
             map.put("resultArchiveName", bj.getResultArchiveRef());
             map.put("rerunUrl", "/?action=rerun&job=" + bj.getName());
             result.add(map);

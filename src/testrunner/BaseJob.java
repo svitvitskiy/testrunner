@@ -1,5 +1,8 @@
 package testrunner;
 
+import java.io.IOException;
+import java.io.InputStream;
+
 public abstract class BaseJob {
     public static enum Status {
         NEW, PENDING, PROCESSING, DONE, ERROR
@@ -60,6 +63,8 @@ public abstract class BaseJob {
     public int getCpuReq() {
         return cpuReq;
     }
+    
+    public abstract InputStream getLog() throws IOException;
 
     protected void updateResultArchiveRef(String resultArchiveRef) {
         this.resultArchiveRef = resultArchiveRef;
