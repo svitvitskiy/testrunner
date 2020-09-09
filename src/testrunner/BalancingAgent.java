@@ -103,7 +103,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
                 jsonObject.get("availableCPU").getAsInt();
                 Log.info("adding delegate at " + url);
-                AgentConnection agent = new AgentConnection(url, false, executor, http);
+                AgentConnection agent = new AgentConnection(url, true, executor, http);
                 agent.scheduleStatusCheck();
                 synchronized (delegates) {
                     delegates.add(agent);
