@@ -81,7 +81,11 @@ public class BalancingStatusPage implements BaseAgent.Handler {
         context.setVariable("agents", agents);
         context.setVariable("unsched", unscheduled(context, tmp));
 
-        Util.processTemplate(response, context, "testrunner/balancingstatus.html");
+        try {
+            Util.processTemplate(response, context, "testrunner/balancingstatus.html");
+        } catch(Exception e) {
+            e.printStackTrace(response.getWriter());
+        }
     }
 
     private void rerunJob(HttpServletRequest request, HttpServletResponse response) {
@@ -176,7 +180,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
                 continue;
             Map<String, Object> map = new HashMap<String, Object>();
             map.put("name", baseJob.getName());
-            map.put("status", baseJob.getStatus());
+            map.put("status", String.valueOf(baseJob.getStatus()));
             map.put("downloading", bj.isDownloading() ? "YES" : "NO");
             if (fileStore.has(bj.getJobArchiveRef())) {
                 map.put("jobArchiveUrl", "/download/" + bj.getJobArchiveRef());

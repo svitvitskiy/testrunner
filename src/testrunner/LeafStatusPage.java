@@ -51,7 +51,7 @@ public class LeafStatusPage implements BaseAgent.Handler {
             LeafJob lj = (LeafJob) baseJob;
             Map<String, Object> map = new HashMap<String, Object>();
             map.put("name", baseJob.getName());
-            map.put("status", baseJob.getStatus());
+            map.put("status", String.valueOf(baseJob.getStatus()));
             if (fileStore.has(lj.getJobArchiveRef())) {
                 map.put("jobArchiveUrl", "/download/" + lj.getJobArchiveRef());
             }
@@ -64,7 +64,11 @@ public class LeafStatusPage implements BaseAgent.Handler {
         }
         context.setVariable("jobs", result);
 
-        Util.processTemplate(response, context, "testrunner/leafstatus.html");
+        try {
+            Util.processTemplate(response, context, "testrunner/leafstatus.html");
+        } catch(Exception e) {
+            e.printStackTrace(response.getWriter());
+        }
     }
 
     private void wipeJobs() {

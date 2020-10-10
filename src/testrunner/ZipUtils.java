@@ -2,6 +2,7 @@ package testrunner;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -111,5 +112,20 @@ public class ZipUtils {
             }
             zis.closeEntry();
         }
+    }
+
+    public static boolean containsFile(File zipFile, String filePath) throws IOException {
+        boolean ret = false;
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
+            ZipEntry zipEntry = zis.getNextEntry();
+            while (zipEntry != null) {
+                if (filePath.equals(zipEntry.getName())) {
+                    ret = true;
+                }
+                zipEntry = zis.getNextEntry();
+            }
+            zis.closeEntry();
+        }
+        return ret;
     }
 }
