@@ -26,6 +26,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class AgentConnection {
+    private static final long GOOD_UPTIME_MS = 30000;
     private String url;
     private boolean online;
     private ScheduledExecutorService executor;
@@ -123,15 +124,17 @@ public class AgentConnection {
             totalJobs = tmp0;
             totalRunningJobs = tmp1;
         }
-        if (autoRetry) {
-            for (RemoteJob remoteJob : Util.safeCopy(jobs)) {
-                if (remoteJob.getStatus() != BaseJob.Status.DONE && !updated.contains(remoteJob.getName())) {
-                    remoteJob.incrementRetryCounter();
-                    if (remoteJob.getRetryCounter() > 60) {
-                        remoteJob.resetRetryCounter();
+        for (RemoteJob remoteJob : Util.safeCopy(jobs)) {
+            if (remoteJob.getStatus() != BaseJob.Status.DONE && !remoteJob.isMissing() && !updated.contains(remoteJob.getName())) {
+                remoteJob.incrementRetryCounter();
+                if (remoteJob.getRetryCounter() > 60) {
+                    if (autoRetry) {
                         Log.warn("[" + remoteJob.getName() + "] Not found on remote agent, rescheduling.");
                         rescheduleJob(remoteJob);
+                    } else {
+                        remoteJob.setMissing(true);
                     }
+                    remoteJob.resetRetryCounter();
                 }
             }
         }
@@ -186,15 +189,15 @@ public class AgentConnection {
         this.availableCPU = availableCPU;
     }
 
-    public RemoteJob scheduleJob(String name, File jobArchive) throws IOException {
+    public RemoteJob scheduleJob(String name, File jobArchive, int priority) throws IOException {
         if (!online)
             return RemoteJob.WAIT;
         String fileid = uploadJobArchive(jobArchive);
         Log.info("[" + name + "] file id:" + fileid);
-        if (!scheduleJob(name, fileid))
+        if (!scheduleJob(name, fileid, priority))
             return null;
 
-        RemoteJob job = new RemoteJob(name, this);
+        RemoteJob job = new RemoteJob(name, priority, this);
         job.updateJobArchive(jobArchive);
 
         if (job != null) {
@@ -206,15 +209,15 @@ public class AgentConnection {
         return job;
     }
 
-    public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, String manifest, String myUrl)
+    public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, int priority, String manifest, String myUrl)
             throws IOException {
         if (!online)
             return null;
-        String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
+        String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\"," + "\"priority\":\"" + priority + "\","
                 + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest + "}";
         if (!doScheduleJobArchive(name, json))
             return null;
-        RemoteJob job = new RemoteJob(name, this);
+        RemoteJob job = new RemoteJob(name, priority, this);
         job.updateJobArchiveRef(jobArchiveRef);
         job.updateManifest(manifest);
         job.updateRemoteUrl(myUrl);
@@ -232,13 +235,13 @@ public class AgentConnection {
         remoteJob.setStatus(BaseJob.Status.NEW);
         String fileid = uploadJobArchive(remoteJob.getJobArchive());
         Log.info("[" + remoteJob.getName() + "] file id:" + fileid);
-        if (!scheduleJob(remoteJob.getName(), fileid)) {
+        if (!scheduleJob(remoteJob.getName(), fileid, remoteJob.getPriority())) {
             Log.warn("[" + remoteJob.getName() + "] Couldn't reschedule a job.");
         }
     }
 
-    private boolean scheduleJob(String name, String fileid) throws IOException {
-        String json = "{\"jobName\":\"" + name + "\",\"jobArchiveRef\":\"" + fileid + "\"}";
+    private boolean scheduleJob(String name, String fileid, int priority) throws IOException {
+        String json = "{\"jobName\":\"" + name + "\","+"\"jobArchiveRef\":\"" + fileid + "\","+"\"priority\":\"" + priority + "\""+"}";
         return doScheduleJobArchive(name, json);
     }
 
@@ -283,7 +286,7 @@ public class AgentConnection {
         agent.scheduleStatusCheck();
         RemoteJob job;
         do {
-            job = agent.scheduleJob(jobArchive.getName().replaceAll("\\.zip$", ""), jobArchive);
+            job = agent.scheduleJob(jobArchive.getName().replaceAll("\\.zip$", ""), jobArchive, 255);
             if (job == null) {
                 System.out.println("Couldn't schedule a job");
                 return;
@@ -305,5 +308,27 @@ public class AgentConnection {
 
     public int getOfflineCounter() {
         return offlineCounter;
+    }
+
+    public boolean isServing() {
+        if (!online)
+            return false;
+        
+        int idx = events.size() - 1;
+        if (idx >= 0 && events.get(idx).getType() == EventType.UP) {
+            if (System.currentTimeMillis() - events.get(idx).getTime() > GOOD_UPTIME_MS)
+                return true;
+        }
+        --idx;
+        if (idx >= 0 && events.get(idx).getType() == EventType.DOWN) {
+            --idx;
+            if (idx >= 0 && events.get(idx).getType() == EventType.UP) {
+                long prevUptime = events.get(idx+1).getTime() - events.get(idx).getTime();
+                if (prevUptime < GOOD_UPTIME_MS)
+                    return false;
+            }
+        }
+        
+        return true;
     }
 }

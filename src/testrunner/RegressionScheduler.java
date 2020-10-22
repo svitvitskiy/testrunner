@@ -23,8 +23,8 @@ public class RegressionScheduler implements TestScheduler {
         private int strmIdx;
         private int qpIdx;
 
-        public JobRequest(String jobName, File jobArchive, int encIdx, int strmIdx, int qpIdx) {
-            super(jobName, jobArchive);
+        public JobRequest(String jobName, File jobArchive, int priority, int encIdx, int strmIdx, int qpIdx) {
+            super(jobName, jobArchive, priority);
             this.encIdx = encIdx;
             this.strmIdx = strmIdx;
             this.qpIdx = qpIdx;
@@ -180,7 +180,7 @@ public class RegressionScheduler implements TestScheduler {
                             + String.format("%06d", (int) (Math.random() * 1000000));
 
                     result.add(
-                            new JobRequest(jobName, new File(requestsFldr, jobName + ".zip"), encIdx, strmIdx, qpIdx));
+                            new JobRequest(jobName, new File(requestsFldr, jobName + ".zip"), 255, encIdx, strmIdx, qpIdx));
                 }
             }
         }

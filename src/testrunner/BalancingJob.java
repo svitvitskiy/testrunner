@@ -12,8 +12,8 @@ public class BalancingJob extends BaseJob {
     private boolean downloading;
     private HttpIface http;
 
-    public BalancingJob(String name, String jobArchiveRef, HttpIface http) {
-        super(name, jobArchiveRef);
+    public BalancingJob(String name, String jobArchiveRef, int priority, HttpIface http) {
+        super(name, jobArchiveRef, priority);
         this.http = http;
     }
 

@@ -102,7 +102,7 @@ public class TestRunner {
 
                     public Future<Future<Future<JobResult>>> call() {
                         try {
-                            RemoteJob rj = agent.scheduleJob(jobRequest.getJobName(), jobRequest.getJobArchive());
+                            RemoteJob rj = agent.scheduleJob(jobRequest.getJobName(), jobRequest.getJobArchive(), jobRequest.getPriority());
                             if (rj == null) {
                                 return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
                             } else if (rj == RemoteJob.WAIT) {

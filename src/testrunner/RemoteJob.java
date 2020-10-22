@@ -27,11 +27,14 @@ public class RemoteJob {
     private String remoteUrl;
     private int retryCounter;
     private File jobArchive;
+    private boolean missing;
+    private int priority;
     
-    public static final RemoteJob WAIT = new RemoteJob("wait", null);
+    public static final RemoteJob WAIT = new RemoteJob("wait", 255, null);
 
-    public RemoteJob(String name, AgentConnection agent) {
+    public RemoteJob(String name, int priority, AgentConnection agent) {
         this.name = name;
+        this.priority = priority;
         this.agent = agent;
         this.status = Status.NEW;
     }
@@ -186,5 +189,17 @@ public class RemoteJob {
     public void setStatus(Status new1) {
         this.status = new1;
 
+    }
+
+    public boolean isMissing() {
+        return missing;
+    }
+
+    public void setMissing(boolean b) {
+        this.missing = true;
+    }
+
+    public int getPriority() {
+        return priority;
     }
 }

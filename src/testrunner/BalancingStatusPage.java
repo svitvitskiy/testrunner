@@ -6,8 +6,11 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -73,6 +76,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
             agent.put("availableCPU", agentConnection.getAvailableCPU());
             agent.put("totalJobs", agentConnection.getTotalRunningJobs());
             agent.put("online", agentConnection.isOnline() ? "YES" : "NO");
+            agent.put("serving", agentConnection.isServing() ? "YES" : "NO");
             agent.put("jobs", jobList(tmp, agentConnection.getUrl()));
             agent.put("events", listEvents(agentConnection));
             agents.add(agent);
@@ -152,7 +156,9 @@ public class BalancingStatusPage implements BaseAgent.Handler {
 
     private List<Object> listEvents(AgentConnection agentConnection) {
         List<Object> result = new ArrayList<Object>();
-        for (Event event : agentConnection.getEvents()) {
+        List<Event> events = agentConnection.getEvents();
+        for (int i = events.size() - 1, cnt = 0; (i > 0) && (cnt < 10); i--, cnt++) {
+            Event event = events.get(i);
             Map<String, String> evt = new HashMap<String, String>();
             evt.put("date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ssZ").format(new Date(event.getTime())));
             evt.put("type", String.valueOf(event.getType()));
@@ -163,10 +169,17 @@ public class BalancingStatusPage implements BaseAgent.Handler {
 
     private List<String> unscheduled(Context context, List<BaseJob> tmp) {
         List<String> result = new ArrayList<String>();
-        for (BaseJob baseJob : tmp) {
+        ArrayList<BaseJob> unsched = new ArrayList<BaseJob>(tmp);
+        Collections.sort(unsched, new Comparator<BaseJob>() {
+            @Override
+            public int compare(BaseJob o1, BaseJob o2) {
+                return Integer.compare(o1.getPriority(), o2.getPriority());
+            }
+        });
+        for (BaseJob baseJob : unsched) {
             BalancingJob bj = (BalancingJob) baseJob;
             if (bj.getDelegate() == null) {
-                result.add(bj.getName());
+                result.add(bj.getName() + "@" + bj.getPriority());
             }
         }
         return result;
@@ -181,7 +194,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
             Map<String, Object> map = new HashMap<String, Object>();
             map.put("name", baseJob.getName());
             map.put("status", String.valueOf(baseJob.getStatus()));
-            map.put("downloading", bj.isDownloading() ? "YES" : "NO");
+            map.put("priority", bj.getPriority());
             if (fileStore.has(bj.getJobArchiveRef())) {
                 map.put("jobArchiveUrl", "/download/" + bj.getJobArchiveRef());
             }

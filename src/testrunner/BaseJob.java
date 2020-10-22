@@ -14,26 +14,29 @@ public abstract class BaseJob {
     private String name;
     private String remoteJobArchiveRef;
     private String remoteUrl;
+    private int priority;
     private int cpuReq;
     
     public static interface JobFactory {
-        BaseJob newJob(String name, String jobArchiveRef);
-        BaseJob newJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq);
+        BaseJob newJob(String name, String jobArchiveRef, int priority);
+        BaseJob newJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq, int priority);
     }
 
-    protected BaseJob(String name, String jobArchiveRef) {
+    protected BaseJob(String name, String jobArchiveRef, int priority) {
         this.name = name;
         this.jobArchiveRef = jobArchiveRef;
         this.status = Status.NEW;
         this.cpuReq = 1;
+        this.priority = priority;
     }
     
-    protected BaseJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq) {
+    protected BaseJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq, int priority) {
         this.name = name;
         this.remoteJobArchiveRef = remoteJobArchiveRef;
         this.remoteUrl = remoteUrl;
         this.status = Status.NEW;
         this.cpuReq = cpuReq;
+        this.priority = priority;
     }
 
     public String getJobArchiveRef() {
@@ -62,6 +65,10 @@ public abstract class BaseJob {
 
     public int getCpuReq() {
         return cpuReq;
+    }
+    
+    public int getPriority() {
+        return priority;
     }
     
     public abstract InputStream getLog() throws IOException;

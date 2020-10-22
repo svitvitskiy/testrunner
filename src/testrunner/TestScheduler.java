@@ -9,10 +9,12 @@ public interface TestScheduler {
     public static class JobRequest {
         private String jobName;
         private File jobArchive;
+        private int priority;
 
-        public JobRequest(String jobName, File jobArchive) {
+        public JobRequest(String jobName, File jobArchive, int priority) {
             this.jobName = jobName;
             this.jobArchive = jobArchive;
+            this.priority = priority;
         }
 
         public String getJobName() {
@@ -21,6 +23,10 @@ public interface TestScheduler {
 
         public File getJobArchive() {
             return jobArchive;
+        }
+
+        public int getPriority() {
+            return priority;
         }
     }
 

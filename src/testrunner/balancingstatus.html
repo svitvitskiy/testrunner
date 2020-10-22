@@ -43,21 +43,22 @@ td {
 <tr><td>Available CPU</td><td th:text="${agent.availableCPU}">0</td></tr>
 <tr><td>Total running jobs</td><td th:text="${agent.totalJobs}">0</td></tr>
 <tr><td>Online</td><td th:text="${agent.online}">NO</td></tr>
+<tr><td>Serving</td><td th:text="${agent.serving}">NO</td></tr>
 <tr><td colspan="2">
   <table class="jobs" cellpadding="0" cellspacing="0">
-  <tr><td>Name</td><td>Status</td><td>Downloading?</td><td>Job archive</td><td>Result archive</td><td>Actions</td></tr>
+  <tr><td>Name</td><td>Status</td><td>Priority</td><td>Job archive</td><td>Result archive</td><td>Actions</td></tr>
   <tr th:each="job: ${agent.jobs}">
   <td th:text="${job.name}">Job name</td>
   <td><a th:if="${job.status == 'PROCESSING'}" th:text="${job.status}" th:href="${'/log/' + job.name}">&nbsp;</a><span th:unless="${job.status == 'PROCESSING'}" th:text="${job.status}"></span></td>
-  <td th:text="${job.downloading}">No</td>
+  <td th:text="${job.priority}">No</td>
   <td><a th:if="${job.jobArchiveUrl}" th:href="${job.jobArchiveUrl}" th:text="${job.jobArchiveName}">&nbsp;</a><a th:unless="${job.jobArchiveUrl}" th:text="${job.jobArchiveName}">&nbsp;</span></td>
   <td><a th:if="${job.resultArchiveUrl}" th:href="${job.resultArchiveUrl}" th:text="${job.resultArchiveName}">&nbsp;</a><a th:unless="${job.resultArchiveUrl}" th:text="${job.resultArchiveName}">&nbsp;</span></td>
   <td><a th:href="${job.rerunUrl}">rerun</a></td>
   </tr>
 </table>
 </td></tr>
-<tr><td>Events</td><td>
-<div th:each="event: ${agent.events}"><span th:text="${event.date}"></span>&nbsp;<span th:text="${event.type}"></span></div>
+<tr><td>Recent events</td><td>
+<div th:each="event,stat: ${agent.events}" th:unless="${stat.index > 10}"><span th:text="${event.date}"></span>&nbsp;<span th:text="${event.type}"></span></div>
 </td></tr>
 </th:block>
 </table>

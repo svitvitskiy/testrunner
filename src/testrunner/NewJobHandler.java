@@ -67,6 +67,10 @@ public class NewJobHandler implements BaseAgent.Handler {
         String jobName = jsonElement0.getAsString();
         if (nameClash(jobName))
             throw new IllegalArgumentException("Duplicate job, job with name '" + jobName + "' exists.");
+        
+        JsonElement jsonElement6 = jsonObject.getAsJsonObject().get("priority");
+        int priority = jsonElement6 != null ? jsonElement6.getAsInt() : 255;
+        
         BaseJob newJob;
         if (jsonElement1 != null) {
             String jobArchiveRef = jsonElement1.getAsString();
@@ -78,7 +82,7 @@ public class NewJobHandler implements BaseAgent.Handler {
                 throw new IllegalArgumentException(
                         "Could could not start the job '" + jobName + "' no manifest.json found.");
             }
-            newJob = factory.newJob(jobName, jobArchiveRef);
+            newJob = factory.newJob(jobName, jobArchiveRef, priority);
         } else if (jsonElement2 != null) {
             JsonElement jsonElement3 = jsonObject.get("remoteUrl");
             JsonElement jsonElement4 = jsonObject.get("manifest");
@@ -87,13 +91,13 @@ public class NewJobHandler implements BaseAgent.Handler {
                         "Invalid job request, both 'remoteUrl' and 'manifest' should be present with 'remoteJobArchiveRef'.");
             }
             JsonElement jsonElement5 = jsonElement4.getAsJsonObject().get("cpu");
-            if (jsonElement3 == null || jsonElement4 == null) {
+            if (jsonElement5 == null) {
                 throw new IllegalArgumentException(
                         "Invalid job request, 'manifest' should contain 'cpu' for 'remoteJobArchiveRef'.");
-            }
-
+            }            
+            
             newJob = factory.newJob(jobName, jsonElement2.getAsString(), jsonElement3.getAsString(),
-                    jsonElement5.getAsInt());
+                    jsonElement5.getAsInt(), priority);
         } else {
             throw new IllegalArgumentException(
                     "Invalid job request, either 'jobArchiveRef' or 'remoteJobArchiveRef' attribute must be present.");

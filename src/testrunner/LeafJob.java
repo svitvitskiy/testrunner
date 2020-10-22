@@ -39,27 +39,27 @@ public class LeafJob extends BaseJob {
         }
 
         @Override
-        public LeafJob newJob(String name, String jobArchiveRef) {
+        public LeafJob newJob(String name, String jobArchiveRef, int priority) {
             Log.info("[" + name + "] Creating job.");
-            return new LeafJob(name, jobArchiveRef, files, processingBase);
+            return new LeafJob(name, jobArchiveRef, priority, files, processingBase);
         }
 
         @Override
-        public BaseJob newJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq) {
+        public BaseJob newJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq, int priority) {
             Log.info("[" + name + "] Creating job.");
-            return new LeafJob(name, remoteJobArchiveRef, remoteUrl, cpuReq, files, processingBase);
+            return new LeafJob(name, remoteJobArchiveRef, remoteUrl, cpuReq, priority, files, processingBase);
         }
     }
 
-    private LeafJob(String name, String jobArchiveRef, FileStore files, File processingBase) {
-        super(name, jobArchiveRef);
+    private LeafJob(String name, String jobArchiveRef, int priority, FileStore files, File processingBase) {
+        super(name, jobArchiveRef, priority);
         this.files = files;
         this.processingBase = processingBase;
     }
 
-    private LeafJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq, FileStore files,
+    private LeafJob(String name, String remoteJobArchiveRef, String remoteUrl, int cpuReq, int priority, FileStore files,
             File processingBase) {
-        super(name, remoteJobArchiveRef, remoteUrl, cpuReq);
+        super(name, remoteJobArchiveRef, remoteUrl, cpuReq, priority);
         this.files = files;
         this.processingBase = processingBase;
     }

@@ -27,9 +27,8 @@ public class CompareScheduler implements TestScheduler {
         private int enIdx;
         private int ptIdx;
 
-        public JobRequest(String jobName, String stream, Descriptor descriptor, String ofName, int enIdx, int ptIdx,
-                File jobArchive) {
-            super(jobName, jobArchive);
+        public JobRequest(String jobName, File jobArchive, int priority, String stream, Descriptor descriptor, String ofName, int enIdx, int ptIdx) {
+            super(jobName, jobArchive, priority);
             this.stream = stream;
             this.descriptor = descriptor;
             this.ofName = ofName;
@@ -92,9 +91,11 @@ public class CompareScheduler implements TestScheduler {
         private String codec;
         private String mode;
         private int effort;
+        private String extraArgs;
+        private String testDefinition;
 
         public Descriptor(List<String> dataset, String[] encBin, String[] encName, int maxFrames, String profile,
-                String codec, String mode, int effort) {
+                String codec, String mode, int effort, String extraArgs, String testDefinition) {
             this.dataset = dataset;
             this.encBin = encBin;
             this.encName = encName;
@@ -103,6 +104,8 @@ public class CompareScheduler implements TestScheduler {
             this.codec = codec;
             this.mode = mode;
             this.effort = effort;
+            this.extraArgs = extraArgs;
+            this.testDefinition = testDefinition;
         }
 
         public static Descriptor parse(File baseDir, String str, Map<String, String> params) throws IOException {
@@ -131,8 +134,12 @@ public class CompareScheduler implements TestScheduler {
             String mode = jsonElement2 == null ? "bitrate" : jsonElement2.getAsString();
             JsonElement jsonElement3 = jsonObject.get("effort");
             int effort = jsonElement3 == null ? 0 : jsonElement3.getAsInt();
+            JsonElement jsonElement4 = jsonObject.get("extraArgs");
+            String extraArgs = jsonElement4 == null ? "" : jsonElement4.getAsString();
+            JsonElement jsonElement5 = jsonObject.get("testDefinition");
+            String testDefinition = jsonElement5 == null ? "" : jsonElement5.getAsString();
 
-            return new Descriptor(dataset, encBin, encName, maxFrames, profile, codec, mode, effort);
+            return new Descriptor(dataset, encBin, encName, maxFrames, profile, codec, mode, effort, extraArgs, testDefinition);
         }
 
         private static String[] parseArray(JsonArray encNames) {
@@ -174,12 +181,22 @@ public class CompareScheduler implements TestScheduler {
         public int getEffort() {
             return effort;
         }
+
+        public String getExtraArgs() {
+            return extraArgs;
+        }
+
+        public String getTestDefinition() {
+            return testDefinition;
+        }
     }
 
     private Descriptor descriptor;
+    private int priority;
 
-    public CompareScheduler(Descriptor descriptor) {
+    public CompareScheduler(Descriptor descriptor, int priority) {
         this.descriptor = descriptor;
+        this.priority = priority;
     }
 
     public static TestScheduler create(String[] args) throws IOException {
@@ -188,16 +205,22 @@ public class CompareScheduler implements TestScheduler {
             return null;
         }
         File file = new File(args[0]);
+        int priority = 255;
         Map<String, String> params = new HashMap<String, String>();
         if (args.length > 1) {
             for (int i = 1; i < args.length; i++) {
-                String[] split = args[i].split(":");
-                params.put(split[0], split[1]);
+                String arg = args[i];
+                if (arg.startsWith("-D")) {
+                  String[] split = arg.substring(2).split(":");
+                  params.put(split[0], split[1]);
+                } else if (arg.startsWith("-p")) {
+                    priority = Integer.parseInt(arg.substring(2));
+                }
             }
         }
 
         Descriptor descriptor = Descriptor.parse(file.getParentFile(), FileUtils.readFileToString(file), params);
-        return new CompareScheduler(descriptor);
+        return new CompareScheduler(descriptor, priority);
     }
 
     @Override
@@ -220,7 +243,7 @@ public class CompareScheduler implements TestScheduler {
                     String jobName = outputBaseName + "_" + pt + "_" + encBinF.getName() + "_"
                             + String.format("%07d", (int) (Math.random() * 1000000));
                     File jobArchive = new File(requestsFldr, jobName + ".zip");
-                    result.add(new JobRequest(jobName, stream, descriptor, outputBaseName, enc, pt, jobArchive));
+                    result.add(new JobRequest(jobName, jobArchive, priority, stream, descriptor, outputBaseName, enc, pt));
                 }
             }
         }
@@ -233,7 +256,7 @@ public class CompareScheduler implements TestScheduler {
         try {
             String psnrTxt = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + "_psnr.csv");
             String ssimTxt = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + "_ssim.csv");
-            long fileSize = ZipUtils.getFileSize(resultArchive, jobRequest.getOfName() + ".ivf");
+            long fileSize = ZipUtils.getFileSize(resultArchive, jobRequest.getOfName() + "." + getFileExtension(jobRequest.getDescriptor().getCodec()));
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
             boolean errorFlag = ZipUtils.containsFile(resultArchive, "error.flag");
 
@@ -270,6 +293,13 @@ public class CompareScheduler implements TestScheduler {
         }
     }
 
+    private String getFileExtension(String codec) {
+        if ("h264".equals(codec))
+            return "264";
+        else
+            return "ivf";
+    }
+
     @Override
     public void createJobArchive(TestScheduler.JobRequest jobRequest_) {
         JobRequest jobRequest = (JobRequest) jobRequest_;
@@ -294,6 +324,7 @@ public class CompareScheduler implements TestScheduler {
             runSh.append("DF_BN=\"" + jobRequest.getOfName() + "_recon.yuv\"\n");
             runSh.append("MODE=\"" + jobRequest.getDescriptor().getMode() + "\"\n");
             runSh.append("EFFORT=\"" + jobRequest.getDescriptor().getEffort() + "\"\n");
+            runSh.append("EXTRA_ARGS=\"" + jobRequest.getDescriptor().getExtraArgs() + "\"\n");
 
             try (InputStream is = this.getClass().getClassLoader()
                     .getResourceAsStream("testrunner/gcloud_remote.tpl")) {
@@ -304,6 +335,7 @@ public class CompareScheduler implements TestScheduler {
             map.put("run.sh", runSh.toString());
             map.put("manifest.json", "{\"cpu\":3}");
             map.put(encBinF.getName(), encBinF);
+            map.put("test_parameters.sh", new File(new File(jobRequest.getDescriptor().getTestDefinition()), "/common/test/quality/test_parameters.sh"));
 
             ZipUtils.createArchive(map, jobRequest.getJobArchive());
             Log.info("[" + jobRequest.getJobName() + "] Created job archive.");
