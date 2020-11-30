@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -15,8 +17,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
-import org.thymeleaf.expression.Lists;
 
+import com.google.api.services.compute.model.Instance;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -35,6 +37,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     private String myUrl;
     private long startTime;
     private HttpIface http;
+    private GCloudManager gcloudManager;
 
     public BalancingAgent(File agentBase, List<String> delegateUrls, String myUrl) {
         this.myUrl = myUrl;
@@ -42,8 +45,27 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         this.executor = Executors.newScheduledThreadPool(Math.min(64, nThreads * 8));
         files = new FileStore(new File(agentBase, "store"));
         this.delegateUrls = delegateUrls;
-        this.http = new HttpIface(1000 /*connectionTimeout*/, 20000 /*socketTimeout*/);
+        this.http = new HttpIface(1000 /* connectionTimeout */, 20000 /* socketTimeout */);
         this.startTime = System.currentTimeMillis();
+    }
+    
+    public static BalancingAgent createGCloud(File agentBase) throws IOException, GeneralSecurityException {
+        List<String> delegates = new ArrayList<String>();
+        String myIp = GCloudUtil.getGCloudMetaVal(GCloudUtil.META_INSTANCE_IP);
+        List<Instance> instances = new GCloudUtil().getAllGCloudInstances();
+
+        for (Instance instance : instances) {
+            String instanceIp = GCloudUtil.getInstanceIp(instance);
+            if (instanceIp != null && !myIp.equals(instanceIp)) {
+                String delegateUrl = GCloudManager.getAgentUrl(instanceIp);
+                System.out.println("Using delegate: " + delegateUrl);
+                delegates.add(delegateUrl);
+            }
+        }
+                
+        BalancingAgent ba = new BalancingAgent(agentBase, delegates, GCloudManager.getAgentUrl(myIp));
+        ba.gcloudManager = new GCloudManager(ba.jobs, ba.delegates, instances, myIp);
+        return ba;
     }
 
     private void doBalancing() throws IOException {
@@ -52,8 +74,9 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         Log.debug("Trying to balance " + safeCopy.size() + " jobs.");
 
         // Finding the job of the highest priority
-        List<BaseJob> unsched = safeCopy.stream().filter(job -> !((BalancingJob)job).hasDelegate()).collect(Collectors.toList());
-        Collections.sort(unsched, (BaseJob o1, BaseJob o2) -> Integer.compare(o1.getPriority(), o2.getPriority()) );
+        List<BaseJob> unsched = safeCopy.stream().filter(job -> !((BalancingJob) job).hasDelegate())
+                .collect(Collectors.toList());
+        Collections.sort(unsched, (BaseJob o1, BaseJob o2) -> Integer.compare(o1.getPriority(), o2.getPriority()));
 
         int i = 0;
         for (BaseJob baseJob : unsched) {
@@ -93,7 +116,8 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             RemoteJob scheduleJob = bestDelegate.scheduleJobCallback(
                     job.getName() + String.format("_bal%06d", (int) (Math.random() * 1000000)), job.getJobArchiveRef(),
                     job.getPriority(), jobManifest, myUrl);
-            Log.debug("[" + job.getName() + "@" + job.getPriority() + "] " + (scheduleJob == null ? "is null" : "is not null"));
+            Log.debug("[" + job.getName() + "@" + job.getPriority() + "] "
+                    + (scheduleJob == null ? "is null" : "is not null"));
             bestDelegate.updateAvailableCPU(0);
             return scheduleJob;
         }
@@ -148,8 +172,8 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 } else {
                     AgentConnection agent = delegate.getAgent();
                     if (!agent.isOnline() && agent.getOfflineCounter() > 60) {
-                        Log.warn("[" + bj.getName() + "@" + bj.getPriority() + "] Agent " + agent.getUrl() + " is offline for at least "
-                                + agent.getOfflineCounter() + "s, rescheduling.");
+                        Log.warn("[" + bj.getName() + "@" + bj.getPriority() + "] Agent " + agent.getUrl()
+                                + " is offline for at least " + agent.getOfflineCounter() + "s, rescheduling.");
                         rescheduleJob(bj);
                     } else {
                         bj.updateStatus(delegate.getStatus());
@@ -176,10 +200,12 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                     String resultArchiveRef = files.addAsFile(f);
                     bj.updateResultArchiveRef(resultArchiveRef);
                     bj.updateStatus(BaseJob.Status.DONE);
-                    Log.info("[" + bj.getName() + "@" + bj.getPriority() + "] Deleting file '" + bj.getJobArchiveRef() + "'.");
+                    Log.info("[" + bj.getName() + "@" + bj.getPriority() + "] Deleting file '" + bj.getJobArchiveRef()
+                            + "'.");
                     files.delete(bj.getJobArchiveRef());
                 } catch (Exception e) {
-                    Log.error("[" + bj.getName() + "@" + bj.getPriority() + "] couldn't update the job status to DONE.");
+                    Log.error(
+                            "[" + bj.getName() + "@" + bj.getPriority() + "] couldn't update the job status to DONE.");
                     e.printStackTrace(System.out);
                 }
                 bj.setDownloading(false);
@@ -251,15 +277,37 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) {
-            System.out.println("Syntax: balancingagent <port> <agent base folder> <delegate list> <my url>");
+        List<String> a = new ArrayList<String>(Arrays.asList(args));
+        boolean isGcloud = CmdUtils.hasKen(a, "-gcloud");
+        if (a.size() < 2) {
+            printHelp();
             return;
         }
-        int port = Integer.parseInt(args[0]);
-        File delegateList = new File(args[2]);
-        BalancingAgent agent = new BalancingAgent(new File(args[1]), FileUtils.readLines(delegateList), args[3]);
+        int port = Integer.parseInt(a.get(0));
+        File agentBase = new File(a.get(1));
+
+        BalancingAgent agent;
+        if (isGcloud) {
+            Log.info("Starting balancing agent with GCloud on port " + port);
+            agent = createGCloud(agentBase); 
+        } else {
+            if (a.size() < 4) {
+                printHelp();
+                return;
+            }
+            List<String> delegates = FileUtils.readLines(new File(a.get(2)));
+            agent = new BalancingAgent(agentBase, delegates, a.get(3));
+        }
+        
         agent.startBalancingTasks();
         agent.startAgent(port);
+    }
+
+    private static void printHelp() {
+        System.out.println("Syntax: balancingagent [-gcloud] <port> <agent base folder> [delegate_list] [my_url]");
+        System.out.println("  Where:");
+        System.out.println("          gcloud    Resolve delegate_list and my_url from GCloud, the appropriate"
+                + " arguments will be ignored.");
     }
 
     @Override

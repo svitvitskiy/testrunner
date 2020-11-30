@@ -20,6 +20,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class CompareScheduler implements TestScheduler {
+    private static final int NUM_POINTS = 13;
+
     private static class JobRequest extends TestScheduler.JobRequest {
         private String stream;
         private Descriptor descriptor;
@@ -120,11 +122,18 @@ public class CompareScheduler implements TestScheduler {
             List<String> dataset = null;
             if (datasetFile != null) {
                 File file = new File(baseDir, datasetFile);
-                dataset = file.exists() ? FileUtils.readLines(file) : null;
+                if (file.exists()) {
+                    dataset = FileUtils.readLines(file);
+                } else {
+                    throw new RuntimeException("Dataset file '" + datasetFile + "' doesn't exist.");
+                }
             }
 
             String[] encBin = parseArray(jsonObject.get("encBin").getAsJsonArray());
             String[] encName = parseArray(jsonObject.get("encName").getAsJsonArray());
+            if (encBin.length != 2 || encName.length != 2) {
+                throw new RuntimeException("'encBin' and 'encName' must be both present and have 2 elements in each array.");
+            }
 
             JsonElement jsonElement0 = jsonObject.get("maxFrames");
             int maxFrames = jsonElement0 == null ? 100 : jsonElement0.getAsInt();
@@ -234,7 +243,7 @@ public class CompareScheduler implements TestScheduler {
         List<TestScheduler.JobRequest> result = new ArrayList<TestScheduler.JobRequest>();
         for (String stream : descriptor.getDataset()) {
             for (int enc = 0; enc < 2; enc++) {
-                for (int pt = 0; pt < 11; pt ++) {
+                for (int pt = 0; pt < NUM_POINTS; pt ++) {
                     stream = stream.trim();
                     String fileName = new File(stream).getName();
                     String outputBaseName = fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");

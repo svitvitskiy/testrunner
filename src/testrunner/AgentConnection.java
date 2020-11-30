@@ -25,6 +25,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import testrunner.BaseJob.Status;
+
 public class AgentConnection {
     private static final long GOOD_UPTIME_MS = 30000;
     private String url;
@@ -99,6 +101,15 @@ public class AgentConnection {
     }
 
     private void updateJobStatus() throws MalformedURLException, IOException {
+        boolean updateNecessary = false;
+        for (RemoteJob remoteJob : Util.safeCopy(jobs)) {
+            Status status = remoteJob.getStatus();
+            if (status != BaseJob.Status.DONE && status != BaseJob.Status.ERROR) {
+                updateNecessary = true;
+                break;
+            }
+        }
+
         URL url2 = new URL(new URL(url), "/status");
         Set<String> updated = new HashSet<String>();
 
@@ -110,7 +121,7 @@ public class AgentConnection {
             JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
             availableCPU = jsonObject.get("availableCPU").getAsInt();
             JsonElement jsonElement = jsonObject.get("jobs");
-            int tmp0 = 0, tmp1 = 0;
+            int newTotalJobs = 0, newTotalRunningJobs = 0;
             for (JsonElement jsonElement2 : jsonElement.getAsJsonArray()) {
                 JsonObject asJsonObject = jsonElement2.getAsJsonObject();
                 String jobName = asJsonObject.get("name").getAsString();
@@ -118,25 +129,31 @@ public class AgentConnection {
                     updated.add(jobName);
                 }
 
-                tmp0 += 1;
-                tmp1 += "DONE".equals(asJsonObject.get("status").getAsString()) ? 0 : 1;
+                newTotalJobs += 1;
+                newTotalRunningJobs += "DONE".equals(asJsonObject.get("status").getAsString()) ? 0 : 1;
             }
-            totalJobs = tmp0;
-            totalRunningJobs = tmp1;
-        }
-        for (RemoteJob remoteJob : Util.safeCopy(jobs)) {
-            if (remoteJob.getStatus() != BaseJob.Status.DONE && !remoteJob.isMissing() && !updated.contains(remoteJob.getName())) {
-                remoteJob.incrementRetryCounter();
-                if (remoteJob.getRetryCounter() > 60) {
-                    if (autoRetry) {
-                        Log.warn("[" + remoteJob.getName() + "] Not found on remote agent, rescheduling.");
-                        rescheduleJob(remoteJob);
-                    } else {
-                        remoteJob.setMissing(true);
+
+            for (RemoteJob remoteJob : Util.safeCopy(jobs)) {
+                if (remoteJob.getStatus() != BaseJob.Status.DONE && !remoteJob.isMissing()
+                        && !updated.contains(remoteJob.getName())) {
+                    remoteJob.incrementRetryCounter();
+                    if (remoteJob.getRetryCounter() > 60) {
+                        if (autoRetry) {
+                            Log.warn("[" + remoteJob.getName() + "] Not found on remote agent, rescheduling.");
+                            rescheduleJob(remoteJob);
+                        } else {
+                            remoteJob.setMissing(true);
+                        }
+                        remoteJob.resetRetryCounter();
                     }
-                    remoteJob.resetRetryCounter();
                 }
             }
+
+            totalJobs = newTotalJobs;
+            totalRunningJobs = newTotalRunningJobs;
+        } catch (IOException e) {
+            if (updateNecessary)
+                throw e;
         }
     }
 
@@ -213,8 +230,9 @@ public class AgentConnection {
             throws IOException {
         if (!online)
             return null;
-        String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\"," + "\"priority\":\"" + priority + "\","
-                + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest + "}";
+        String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
+                + "\"priority\":\"" + priority + "\"," + "\"remoteUrl\":\"" + myUrl + "\"," + "\"manifest\":" + manifest
+                + "}";
         if (!doScheduleJobArchive(name, json))
             return null;
         RemoteJob job = new RemoteJob(name, priority, this);
@@ -241,7 +259,8 @@ public class AgentConnection {
     }
 
     private boolean scheduleJob(String name, String fileid, int priority) throws IOException {
-        String json = "{\"jobName\":\"" + name + "\","+"\"jobArchiveRef\":\"" + fileid + "\","+"\"priority\":\"" + priority + "\""+"}";
+        String json = "{\"jobName\":\"" + name + "\"," + "\"jobArchiveRef\":\"" + fileid + "\"," + "\"priority\":\""
+                + priority + "\"" + "}";
         return doScheduleJobArchive(name, json);
     }
 
@@ -313,7 +332,7 @@ public class AgentConnection {
     public boolean isServing() {
         if (!online)
             return false;
-        
+
         int idx = events.size() - 1;
         if (idx >= 0 && events.get(idx).getType() == EventType.UP) {
             if (System.currentTimeMillis() - events.get(idx).getTime() > GOOD_UPTIME_MS)
@@ -323,12 +342,12 @@ public class AgentConnection {
         if (idx >= 0 && events.get(idx).getType() == EventType.DOWN) {
             --idx;
             if (idx >= 0 && events.get(idx).getType() == EventType.UP) {
-                long prevUptime = events.get(idx+1).getTime() - events.get(idx).getTime();
+                long prevUptime = events.get(idx + 1).getTime() - events.get(idx).getTime();
                 if (prevUptime < GOOD_UPTIME_MS)
                     return false;
             }
         }
-        
+
         return true;
     }
 }
