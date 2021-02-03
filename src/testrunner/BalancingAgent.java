@@ -1,5 +1,6 @@
 package testrunner;
 
+import java.awt.Component.BaselineResizeBehavior;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,19 +70,19 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     }
 
     private void doBalancing() throws IOException {
-        List<AgentConnection> tmp = Util.safeCopy(delegates);
-        List<BaseJob> safeCopy = Util.safeCopy(jobs);
-        Log.debug("Trying to balance " + safeCopy.size() + " jobs.");
+        List<AgentConnection> delegatesCopy = Util.safeCopy(delegates);
+        List<BaseJob> jobsCopy = Util.safeCopy(jobs);
+        Log.debug("Trying to balance " + jobsCopy.size() + " jobs.");
 
         // Finding the job of the highest priority
-        List<BaseJob> unsched = safeCopy.stream().filter(job -> !((BalancingJob) job).hasDelegate())
+        List<BaseJob> unsched = jobsCopy.stream().filter(job -> !((BalancingJob) job).hasDelegate() && job.getStatus() == BaseJob.Status.NEW)
                 .collect(Collectors.toList());
         Collections.sort(unsched, (BaseJob o1, BaseJob o2) -> Integer.compare(o1.getPriority(), o2.getPriority()));
 
         int i = 0;
         for (BaseJob baseJob : unsched) {
             BalancingJob bj = (BalancingJob) baseJob;
-            RemoteJob remoteJob = tryDelegate(bj, tmp);
+            RemoteJob remoteJob = tryDelegate(bj, delegatesCopy);
             if (remoteJob != null) {
                 bj.updateDelegate(remoteJob);
                 Log.info("[" + bj.getName() + "@" + remoteJob.getPriority() + "] Scheduled job with remote agent '"
@@ -106,10 +107,10 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             }
         }
         if (bestCapacity > 0 && bestDelegate != null) {
-            File file = files.get(job.getJobArchiveRef());
             tmp.remove(bestDelegate);
-            String jobManifest = getJobManifest(file);
+            String jobManifest = job.getJobManifest(files);
             if (jobManifest == null) {
+                job.updateStatus(BaseJob.Status.ERROR);
                 Log.error("[" + job.getName() + "] Couldn't schedule, job has not manifest.json.");
                 return null;
             }
@@ -122,10 +123,6 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             return scheduleJob;
         }
         return null;
-    }
-
-    private String getJobManifest(File zipFile) throws IOException {
-        return ZipUtils.getFileAsString(zipFile, "manifest.json");
     }
 
     private void resolveAgents() {
@@ -160,7 +157,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             BalancingJob bj = (BalancingJob) baseJob;
             if (!bj.hasDelegate())
                 continue;
-            if (bj.getStatus() != BaseJob.Status.DONE) {
+            if (bj.getStatus() != BaseJob.Status.DONE && bj.getStatus() != BaseJob.Status.ERROR) {
                 RemoteJob delegate = bj.getDelegate();
                 if (delegate.isMissing()) {
                     AgentConnection agent = delegate.getAgent();

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -94,10 +95,10 @@ public class CompareScheduler implements TestScheduler {
         private String mode;
         private int effort;
         private String extraArgs;
-        private String testDefinition;
+        private Map<String, String> profileArgs;
 
-        public Descriptor(List<String> dataset, String[] encBin, String[] encName, int maxFrames, String profile,
-                String codec, String mode, int effort, String extraArgs, String testDefinition) {
+        private Descriptor(List<String> dataset, String[] encBin, String[] encName, int maxFrames, String profile,
+                String codec, String mode, int effort, String extraArgs, Map<String, String> profileArgs) {
             this.dataset = dataset;
             this.encBin = encBin;
             this.encName = encName;
@@ -107,7 +108,7 @@ public class CompareScheduler implements TestScheduler {
             this.mode = mode;
             this.effort = effort;
             this.extraArgs = extraArgs;
-            this.testDefinition = testDefinition;
+            this.profileArgs = profileArgs;
         }
 
         public static Descriptor parse(File baseDir, String str, Map<String, String> params) throws IOException {
@@ -145,10 +146,17 @@ public class CompareScheduler implements TestScheduler {
             int effort = jsonElement3 == null ? 0 : jsonElement3.getAsInt();
             JsonElement jsonElement4 = jsonObject.get("extraArgs");
             String extraArgs = jsonElement4 == null ? "" : jsonElement4.getAsString();
-            JsonElement jsonElement5 = jsonObject.get("testDefinition");
-            String testDefinition = jsonElement5 == null ? "" : jsonElement5.getAsString();
+            
+            JsonElement jsonElement5 = jsonObject.get("profileArgs");
+            Map<String, String> profileArgs = new HashMap<String, String>();
+            if (jsonElement5 != null) {
+                JsonObject paJo = jsonElement5.getAsJsonObject();
+                for (String key : paJo.keySet()) {
+                    profileArgs.put(key, paJo.get(key).getAsString());
+                }
+            }
 
-            return new Descriptor(dataset, encBin, encName, maxFrames, profile, codec, mode, effort, extraArgs, testDefinition);
+            return new Descriptor(dataset, encBin, encName, maxFrames, profile, codec, mode, effort, extraArgs, profileArgs);
         }
 
         private static String[] parseArray(JsonArray encNames) {
@@ -195,8 +203,8 @@ public class CompareScheduler implements TestScheduler {
             return extraArgs;
         }
 
-        public String getTestDefinition() {
-            return testDefinition;
+        public Map<String, String> getProfileArgs() {
+            return profileArgs;
         }
     }
 
@@ -334,6 +342,11 @@ public class CompareScheduler implements TestScheduler {
             runSh.append("MODE=\"" + jobRequest.getDescriptor().getMode() + "\"\n");
             runSh.append("EFFORT=\"" + jobRequest.getDescriptor().getEffort() + "\"\n");
             runSh.append("EXTRA_ARGS=\"" + jobRequest.getDescriptor().getExtraArgs() + "\"\n");
+            
+            Map<String, String> profileArgs = jobRequest.getDescriptor().getProfileArgs();
+            for (Entry<String, String> entry : profileArgs.entrySet()) {
+                runSh.append("PROFILE_ARGS_" + entry.getKey() + "=\"" + entry.getValue() + "\"\n");
+            }
 
             try (InputStream is = this.getClass().getClassLoader()
                     .getResourceAsStream("testrunner/gcloud_remote.tpl")) {
@@ -343,8 +356,7 @@ public class CompareScheduler implements TestScheduler {
             Map<String, Object> map = new HashMap<String, Object>();
             map.put("run.sh", runSh.toString());
             map.put("manifest.json", "{\"cpu\":3}");
-            map.put(encBinF.getName(), encBinF);
-            map.put("test_parameters.sh", new File(new File(jobRequest.getDescriptor().getTestDefinition()), "/common/test/quality/test_parameters.sh"));
+            map.put(encBinF.getName(), encBinF);            
 
             ZipUtils.createArchive(map, jobRequest.getJobArchive());
             Log.info("[" + jobRequest.getJobName() + "] Created job archive.");

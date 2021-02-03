@@ -35,6 +35,10 @@ public class ZipUtils {
     }
 
     public static String getFileAsString(File zipFile, String filePath) throws IOException {
+        if (zipFile == null)
+            return null;
+        if (filePath == null)
+            return null;
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
             ZipEntry zipEntry = zis.getNextEntry();
             String result = null;

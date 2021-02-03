@@ -1,5 +1,6 @@
 package testrunner;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -40,6 +41,14 @@ public class BalancingJob extends BaseJob {
     public void eraseDelegate() {
         this.delegate = null;
         this.downloading = false;
+    }
+
+    public String getJobManifest(FileStore files) throws IOException {
+        File file = files.get(getJobArchiveRef());
+        if (file == null) {
+            return null;
+        }
+        return ZipUtils.getFileAsString(file, "manifest.json");
     }
 
     @Override
