@@ -167,8 +167,8 @@ public class BalancingStatusPage implements BaseAgent.Handler {
         return result;
     }
 
-    private List<String> unscheduled(Context context, List<BaseJob> tmp) {
-        List<String> result = new ArrayList<String>();
+    private List<Object> unscheduled(Context context, List<BaseJob> tmp) {
+        List<Object> result = new ArrayList<Object>();
         ArrayList<BaseJob> unsched = new ArrayList<BaseJob>(tmp);
         Collections.sort(unsched, new Comparator<BaseJob>() {
             @Override
@@ -179,7 +179,11 @@ public class BalancingStatusPage implements BaseAgent.Handler {
         for (BaseJob baseJob : unsched) {
             BalancingJob bj = (BalancingJob) baseJob;
             if (bj.getDelegate() == null) {
-                result.add(bj.getName() + "@" + bj.getPriority());
+                Map<String, String> obj = new HashMap<String, String>();
+                obj.put("name", bj.getName());
+                obj.put("priority", String.valueOf(bj.getPriority()));
+                obj.put("status", bj.getStatus().name());
+                result.add(obj);
             }
         }
         return result;

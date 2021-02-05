@@ -65,4 +65,6 @@ public interface TestScheduler {
     JobResult processResult(JobRequest jobRequest, File resultArchive);
 
     void finish(List<JobResult> results, File baseFldr) throws IOException;
+
+    void processError(JobRequest jobRequest);
 }

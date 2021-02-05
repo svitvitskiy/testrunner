@@ -156,7 +156,7 @@ public class GCloudManager implements Runnable {
         int count = 0;
         for (BaseJob baseJob : Util.safeCopy(jobs)) {
             BalancingJob bj = (BalancingJob) baseJob;
-            if (bj.getDelegate() == null) {
+            if (bj.getDelegate() == null && bj.getStatus() != BaseJob.Status.ERROR) {
                 count++;
             }
         }

@@ -65,12 +65,12 @@ td {
 
 <table>
 <tr th:each="i : ${#numbers.sequence( 0, #lists.size(unsched)-1, 6)}">
-  <td th:text="${unsched[i+0]}"   th:if="${i+0 < #lists.size(unsched)}">&nbsp;</td>
-  <td th:text="${unsched[i+1]}" th:if="${i+1 < #lists.size(unsched)}">&nbsp;</td>
-  <td th:text="${unsched[i+2]}" th:if="${i+2 < #lists.size(unsched)}">&nbsp;</td>
-  <td th:text="${unsched[i+3]}" th:if="${i+3 < #lists.size(unsched)}">&nbsp;</td>
-  <td th:text="${unsched[i+4]}" th:if="${i+4 < #lists.size(unsched)}">&nbsp;</td>
-  <td th:text="${unsched[i+5]}" th:if="${i+5 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:style="${unsched[i+0].status == 'ERROR' ? 'color: red;' : 'color: black;'}" th:text="${unsched[i+0].name+'@'+unsched[i+0].priority}" th:if="${i+0 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:style="${unsched[i+1].status == 'ERROR' ? 'color: red;' : 'color: black;'}" th:text="${unsched[i+1].name+'@'+unsched[i+1].priority}" th:if="${i+1 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:style="${unsched[i+2].status == 'ERROR' ? 'color: red;' : 'color: black;'}" th:text="${unsched[i+2].name+'@'+unsched[i+2].priority}" th:if="${i+2 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:style="${unsched[i+3].status == 'ERROR' ? 'color: red;' : 'color: black;'}" th:text="${unsched[i+3].name+'@'+unsched[i+3].priority}" th:if="${i+3 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:style="${unsched[i+4].status == 'ERROR' ? 'color: red;' : 'color: black;'}" th:text="${unsched[i+4].name+'@'+unsched[i+4].priority}" th:if="${i+4 < #lists.size(unsched)}">&nbsp;</td>
+  <td th:style="${unsched[i+5].status == 'ERROR' ? 'color: red;' : 'color: black;'}" th:text="${unsched[i+5].name+'@'+unsched[i+5].priority}" th:if="${i+5 < #lists.size(unsched)}">&nbsp;</td>
 </tr>
 </table>
 

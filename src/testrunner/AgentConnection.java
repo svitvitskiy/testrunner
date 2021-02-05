@@ -314,7 +314,7 @@ public class AgentConnection {
                 Thread.sleep(1000);
             }
         } while (job == RemoteJob.WAIT);
-        job.waitDone();
+        job.waitFinished();
         System.out.println("[" + job.getName() + "] Job finished: " + job.getStatus());
         System.out.println("[" + job.getName() + "] Result archive: " + job.getResultArchiveRef());
         executor2.shutdown();

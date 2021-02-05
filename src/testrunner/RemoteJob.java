@@ -39,8 +39,8 @@ public class RemoteJob {
         this.status = Status.NEW;
     }
 
-    public synchronized void waitDone() throws InterruptedException {
-        while (this.status != BaseJob.Status.DONE) {
+    public synchronized void waitFinished() throws InterruptedException {
+        while (this.status != BaseJob.Status.DONE && this.status != BaseJob.Status.ERROR) {
             this.wait();
         }
     }
@@ -104,7 +104,7 @@ public class RemoteJob {
         return temp;
     }
 
-    public <T> Future<T> onDone(Callable<T> runnable) {
+    public <T> Future<T> onFinished(Callable<T> runnable) {
         if (this.doneCallback != null)
             throw new IllegalStateException("Can set callback only once");
 
@@ -128,7 +128,7 @@ public class RemoteJob {
             @Override
             public T get() throws InterruptedException, ExecutionException {
                 Log.debug("[" + name + "] Returning callback result");
-                waitDone();
+                waitFinished();
                 Log.debug("[" + name + "] Returning callback result");
                 return (T) callbackResult;
             }

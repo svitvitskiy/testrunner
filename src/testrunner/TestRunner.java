@@ -1,5 +1,6 @@
 package testrunner;
 
+import java.awt.Component.BaselineResizeBehavior;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -110,7 +111,7 @@ public class TestRunner {
                                 return Util.compoundFuture2(executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
                             }
                             Log.info("[" + jobRequest.getJobName() + "] Scheduled.");
-                            return rj.onDone(() -> {
+                            return rj.onFinished(() -> {
                                 Callable<Future<JobResult>> task2 = new Callable<Future<JobResult>>() {
                                     int retries1 = 0;
 
@@ -159,16 +160,21 @@ public class TestRunner {
     private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) throws IOException {
         if (job == null)
             return new JobResult(jobRequest, false, "Remote job was null");
-        Log.info("[" + jobRequest.getJobName() + "] Processing result.");
-        File resultArchive = job.getResultArchive(http);
-
-        if (resultArchive == null)
-            return new JobResult(jobRequest, false, "Result archive was null");
-
-        File dest = new File(resultsFldr, jobRequest.getJobName() + ".zip");
-        resultArchive.renameTo(dest);
-        resultArchive = dest;
-
-        return scheduler.processResult(jobRequest, resultArchive);
+        if (job.getStatus() == BaseJob.Status.DONE) {
+            Log.info("[" + jobRequest.getJobName() + "] Processing result.");
+            File resultArchive = job.getResultArchive(http);
+    
+            if (resultArchive == null)
+                return new JobResult(jobRequest, false, "Result archive was null");
+    
+            File dest = new File(resultsFldr, jobRequest.getJobName() + ".zip");
+            resultArchive.renameTo(dest);
+            resultArchive = dest;
+    
+            return scheduler.processResult(jobRequest, resultArchive);
+        } else {
+            scheduler.processError(jobRequest);
+            return new JobResult(jobRequest, false, "");
+        }
     }
 }

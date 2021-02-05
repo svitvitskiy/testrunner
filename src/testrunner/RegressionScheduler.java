@@ -291,4 +291,9 @@ public class RegressionScheduler implements TestScheduler {
             }
         }
     }
+
+    @Override
+    public void processError(testrunner.TestScheduler.JobRequest jobRequest) {
+        Log.error("[" + jobRequest.getJobName() + "] Job failed to schedule.");        
+    }
 }

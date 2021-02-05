@@ -3,8 +3,10 @@ package testrunner;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
@@ -266,7 +268,13 @@ public class CompareScheduler implements TestScheduler {
         }
         return result;
     }
-
+    boolean hadOutput = false;
+    private static final String FORMAT_LINE = (char) 27 + "[92m%40s | %2s | %15s | %s" + (char) 27 + "[0m";
+    
+    private static String capLen(String str, int len) {
+        return str.substring(0, Math.min(len, str.length()));
+    }
+    
     @Override
     public TestScheduler.JobResult processResult(TestScheduler.JobRequest jobRequest_, File resultArchive) {
         JobRequest jobRequest = (JobRequest) jobRequest_;
@@ -299,8 +307,17 @@ public class CompareScheduler implements TestScheduler {
             double psnr = parseCsvVal(psnrTxt);
             double ssim = parseCsvVal(ssimTxt);
 
-            System.out.println((char) 27 + "[92m+ " + jobRequest.getOfName() + "#" + jobRequest.getPtIdx() + "("
-                    + jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()] + ")" + (char) 27 + "[0m");
+//            System.out.println((char) 27 + "[92m+ " + jobRequest.getOfName() + "#" + jobRequest.getPtIdx() + "("
+//                    + jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()] + ") @ " + new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())
+//                    + (char) 27 + "[0m");
+            if (!hadOutput) {
+                System.out.println(String.format(FORMAT_LINE, "File name", "Pt", "Encoder", "Date"));
+                hadOutput = true;
+            }
+            System.out.println(String.format(FORMAT_LINE, capLen(jobRequest.getOfName(), 40),
+                    String.valueOf(jobRequest.getPtIdx()),
+                    jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()],
+                    new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())));
 
             return new JobResult(jobRequest, true, "", fileSize, psnr, ssim);
         } catch (Exception e) {
@@ -498,5 +515,10 @@ public class CompareScheduler implements TestScheduler {
             return Integer.parseInt(h);
         }
         return 0;
+    }
+
+    @Override
+    public void processError(testrunner.TestScheduler.JobRequest jobRequest) {
+        Log.error("[" + jobRequest.getJobName() + "] Job failed to schedule.");        
     }
 }
