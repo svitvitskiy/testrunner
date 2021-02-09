@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Random;
 import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
@@ -212,10 +213,12 @@ public class CompareScheduler implements TestScheduler {
 
     private Descriptor descriptor;
     private int priority;
+    private Random random;
 
     public CompareScheduler(Descriptor descriptor, int priority) {
         this.descriptor = descriptor;
         this.priority = priority;
+        this.random = new Random(System.currentTimeMillis());
     }
 
     public static TestScheduler create(String[] args) throws IOException {
@@ -258,9 +261,9 @@ public class CompareScheduler implements TestScheduler {
                     String fileName = new File(stream).getName();
                     String outputBaseName = fileName.replaceAll("\\.[0-9a-zA-Z]+$", "");
                     File encBinF = new File(descriptor.getEncBin()[enc]);
-
+                    
                     String jobName = outputBaseName + "_" + pt + "_" + encBinF.getName() + "_"
-                            + String.format("%07d", (int) (Math.random() * 1000000));
+                            + String.format("%08x", random.nextInt());
                     File jobArchive = new File(requestsFldr, jobName + ".zip");
                     result.add(new JobRequest(jobName, jobArchive, priority, stream, descriptor, outputBaseName, enc, pt));
                 }
