@@ -103,8 +103,8 @@ public class ZipUtils {
 
     public static void createArchive(Map<String, Object> map, File output) throws IOException {
         try (ZipOutputStream os = new ZipOutputStream(new FileOutputStream(output))) {
-            Set<Entry<String, Object>> entrySet = map.entrySet();
-            for (Entry<String, Object> entry : entrySet) {
+            Set<Map.Entry<String, Object>> entrySet = map.entrySet();
+            for (Map.Entry<String, Object> entry : entrySet) {
                 if (entry.getValue() instanceof File) {
                     os.putNextEntry(new ZipEntry(entry.getKey()));
                     try (InputStream is = new FileInputStream((File) entry.getValue())) {
