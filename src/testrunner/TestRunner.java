@@ -61,6 +61,8 @@ public class TestRunner {
 
         AgentConnection agent = new AgentConnection(agentUrl, true, executor2, http);
         agent.scheduleStatusCheck();
+        
+        scheduler.init(baseFldr);
 
         List<Future<JobResult>> futures = new ArrayList<Future<JobResult>>();
         scheduleJobs(agent, scheduler, baseFldr, executor, futures);
@@ -76,7 +78,7 @@ public class TestRunner {
 
         agent.shutdown();
 
-        scheduler.finish(results, baseFldr);
+        scheduler.finish(results);
 
         executor.shutdown();
         executor2.shutdown();

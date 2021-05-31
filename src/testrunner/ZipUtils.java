@@ -2,13 +2,11 @@ package testrunner;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -66,6 +64,41 @@ public class ZipUtils {
             zis.closeEntry();
         }
         return false;
+    }
+    
+    public static enum CompareFilesStatus {
+        FILE_A_NOT_FOUND, FILE_B_NOT_FOUND, EQUAL, NON_EQUAL
+    }
+    
+    public static CompareFilesStatus compareFiles(File zipFile, String fileAPath, String fileBPath) throws IOException {
+        try (ZipInputStream zisA = new ZipInputStream(new FileInputStream(zipFile)); ZipInputStream zisB = new ZipInputStream(new FileInputStream(zipFile))) {
+            ZipEntry zipEntryA = findZipEntry(fileAPath, zisA);
+            if (zipEntryA == null) {
+                return CompareFilesStatus.FILE_A_NOT_FOUND;
+            }
+            ZipEntry zipEntryB = findZipEntry(fileBPath, zisB);
+            if (zipEntryB == null) {
+                zisA.closeEntry();
+                return CompareFilesStatus.FILE_B_NOT_FOUND;
+            }
+            boolean equals = IOUtils.contentEquals(zisA, zisB);
+            
+            zisA.closeEntry();
+            zisB.closeEntry();
+            
+            return equals ? CompareFilesStatus.EQUAL : CompareFilesStatus.NON_EQUAL;
+        }
+    }
+
+    private static ZipEntry findZipEntry(String filePath, ZipInputStream zis) throws IOException {
+        ZipEntry zipEntryA = null;
+        do {
+            zipEntryA = zis.getNextEntry();
+            if (zipEntryA != null && filePath.equals(zipEntryA.getName())) {
+                return zipEntryA;
+            }
+        } while(zipEntryA != null);
+        return null;
     }
 
     public static void createArchive(Map<String, Object> map, File output) throws IOException {

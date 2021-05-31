@@ -17,6 +17,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import testrunner.ZipUtils.CompareFilesStatus;
+
 public class RegressionScheduler implements TestScheduler {
     static class JobRequest extends TestScheduler.JobRequest {
         private int encIdx;
@@ -160,6 +162,7 @@ public class RegressionScheduler implements TestScheduler {
     }
 
     private Descriptor descriptor;
+    private File baseFldr;
 
     public RegressionScheduler(Descriptor descriptor) {
         this.descriptor = descriptor;
@@ -235,27 +238,25 @@ public class RegressionScheduler implements TestScheduler {
         try {
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
             String ofName = getOfName(descriptor.getStreams()[jobRequest.getStrmIdx()]);
-            File f1 = File.createTempFile("cool", "stan");
-            File f2 = File.createTempFile("cool", "stan");
+            
+            CompareFilesStatus compareResult = ZipUtils.compareFiles(resultArchive, "recon.yuv", ofName + "_recon.yuv");
 
-            if (!ZipUtils.extractFileTo(resultArchive, "recon.yuv", f1)) {
+            if (compareResult == CompareFilesStatus.FILE_A_NOT_FOUND) {
                 Log.error("[" + jobRequest.getJobName() + "] Job result did not contain recon file.");
                 return new JobResult(jobRequest, false, stdout, false);
             }
 
-            if (!ZipUtils.extractFileTo(resultArchive, ofName + "_recon.yuv", f2)) {
+            if (compareResult == CompareFilesStatus.FILE_B_NOT_FOUND) {
                 Log.error("[" + jobRequest.getJobName() + "] Job result did not contain reference recon file.");
                 return new JobResult(jobRequest, false, stdout, false);
             }
-
-            boolean contentEquals = FileUtils.contentEquals(f1, f2);
 
             String encBaseName = new File(descriptor.getEncoders()[jobRequest.getEncIdx()]).getName();
 
             System.out.println((char) 27 + "[92m+ " + ofName + "@" + descriptor.getQps()[jobRequest.getQpIdx()] + "("
                     + encBaseName + ")" + (char) 27 + "[0m");
 
-            return new JobResult(jobRequest, true, stdout, contentEquals);
+            return new JobResult(jobRequest, true, stdout, compareResult == CompareFilesStatus.EQUAL);
         } catch (Exception e) {
             Log.error("[" + jobRequest.getJobName() + "] Couldn't process the job result.");
             e.printStackTrace(System.out);
@@ -269,7 +270,7 @@ public class RegressionScheduler implements TestScheduler {
     }
 
     @Override
-    public void finish(List<TestScheduler.JobResult> results, File baseFldr) throws IOException {
+    public void finish(List<TestScheduler.JobResult> results) throws IOException {
         System.out.println("Report:");
         for (TestScheduler.JobResult r : results) {
             if (r instanceof JobResult) {
@@ -295,5 +296,10 @@ public class RegressionScheduler implements TestScheduler {
     @Override
     public void processError(testrunner.TestScheduler.JobRequest jobRequest) {
         Log.error("[" + jobRequest.getJobName() + "] Job failed to schedule.");        
+    }
+
+    @Override
+    public void init(File baseFldr) {
+        this.baseFldr = baseFldr;
     }
 }

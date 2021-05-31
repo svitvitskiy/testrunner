@@ -214,10 +214,13 @@ public class CompareScheduler implements TestScheduler {
     private Descriptor descriptor;
     private int priority;
     private Random random;
+    private File baseFldr;
+    private Map<String, String> runArgs;
 
-    public CompareScheduler(Descriptor descriptor, int priority) {
+    public CompareScheduler(Descriptor descriptor, int priority, Map<String, String> runArgs) {
         this.descriptor = descriptor;
         this.priority = priority;
+        this.runArgs = runArgs;
         this.random = new Random(System.currentTimeMillis());
     }
 
@@ -229,12 +232,17 @@ public class CompareScheduler implements TestScheduler {
         File file = new File(args[0]);
         int priority = 255;
         Map<String, String> params = new HashMap<String, String>();
+        Map<String, String> runArgs = new HashMap<String, String>();
         if (args.length > 1) {
             for (int i = 1; i < args.length; i++) {
                 String arg = args[i];
                 if (arg.startsWith("-D")) {
                   String[] split = arg.substring(2).split(":");
                   params.put(split[0], split[1]);
+                } else if (arg.startsWith("-R")) {
+                    // run time args
+                    String[] split = arg.substring(2).split(":");
+                    runArgs.put(split[0], split[1]);
                 } else if (arg.startsWith("-p")) {
                     priority = Integer.parseInt(arg.substring(2));
                 }
@@ -242,13 +250,18 @@ public class CompareScheduler implements TestScheduler {
         }
 
         Descriptor descriptor = Descriptor.parse(file.getParentFile(), FileUtils.readFileToString(file), params);
-        return new CompareScheduler(descriptor, priority);
+        return new CompareScheduler(descriptor, priority, runArgs);
+    }
+    
+    @Override
+    public void init(File baseFldr) {
+        this.baseFldr = baseFldr;
     }
 
     @Override
-    public void finish(List<TestScheduler.JobResult> results, File baseFldr) throws IOException {
+    public void finish(List<TestScheduler.JobResult> results) throws IOException {
         Log.info("Generating report.");
-        generateReport(baseFldr, results, descriptor);
+        generateReport(results, descriptor);
     }
 
     @Override
@@ -273,10 +286,13 @@ public class CompareScheduler implements TestScheduler {
     }
     boolean hadOutput = false;
     private static final String FORMAT_LINE = (char) 27 + "[92m%40s | %2s | %15s | %s" + (char) 27 + "[0m";
+    private static final String ERROR_LINE = (char) 27 + "[91m%40s | %2s | %15s | %s" + (char) 27 + "[0m";
     
     private static String capLen(String str, int len) {
         return str.substring(0, Math.min(len, str.length()));
     }
+    
+    private List<TestScheduler.JobResult> _results = new ArrayList<TestScheduler.JobResult>();
     
     @Override
     public TestScheduler.JobResult processResult(TestScheduler.JobRequest jobRequest_, File resultArchive) {
@@ -289,21 +305,21 @@ public class CompareScheduler implements TestScheduler {
             boolean errorFlag = ZipUtils.containsFile(resultArchive, "error.flag");
 
             if (errorFlag) {
-                Log.error("[" + jobRequest.getJobName() + "] Job failed.");
+                printJobError(jobRequest, stdout);
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
             if (psnrTxt == null) {
-                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain PSNR data.");
+                printJobError(jobRequest, stdout);
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
             if (ssimTxt == null) {
-                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain SSIM data.");
+                printJobError(jobRequest, stdout);
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
             if (fileSize < 0) {
-                Log.error("[" + jobRequest.getJobName() + "] Job result did not contain encoded stream.");
+                printJobError(jobRequest, stdout);
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
@@ -321,13 +337,24 @@ public class CompareScheduler implements TestScheduler {
                     String.valueOf(jobRequest.getPtIdx()),
                     jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()],
                     new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())));
+            JobResult result = new JobResult(jobRequest, true, "", fileSize, psnr, ssim);
+            _results.add(result);
+            generateReport(_results, descriptor);
 
-            return new JobResult(jobRequest, true, "", fileSize, psnr, ssim);
+            return result;
         } catch (Exception e) {
             Log.error("[" + jobRequest.getJobName() + "] Couldn't process the job result.");
             e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, 0, 0);
         }
+    }
+
+    private void printJobError(JobRequest jobRequest, String stdout) {
+        System.out.println(String.format(ERROR_LINE, capLen(jobRequest.getOfName(), 40),
+                String.valueOf(jobRequest.getPtIdx()),
+                jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()],
+                new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())));
+        System.out.println(tailOfLogFile(stdout));
     }
 
     private String getFileExtension(String codec) {
@@ -362,6 +389,9 @@ public class CompareScheduler implements TestScheduler {
             runSh.append("MODE=\"" + jobRequest.getDescriptor().getMode() + "\"\n");
             runSh.append("EFFORT=\"" + jobRequest.getDescriptor().getEffort() + "\"\n");
             runSh.append("EXTRA_ARGS=\"" + jobRequest.getDescriptor().getExtraArgs() + "\"\n");
+            for (Entry<String, String> entry : runArgs.entrySet()) {
+                runSh.append("RUN_ARGS_" + entry.getKey().toUpperCase() + "=\"" + entry.getValue() + "\"\n");
+            }
             
             Map<String, String> profileArgs = jobRequest.getDescriptor().getProfileArgs();
             for (Entry<String, String> entry : profileArgs.entrySet()) {
@@ -386,26 +416,14 @@ public class CompareScheduler implements TestScheduler {
         }
     }
 
-    private void generateReport(File baseFldr, List<TestScheduler.JobResult> results, Descriptor descriptor)
+    private boolean reportMessagePrinted = false;
+    private void generateReport(List<TestScheduler.JobResult> results, Descriptor descriptor)
             throws IOException {
-        Log.info("Done, generating report.");
         File reportFile = new File(baseFldr, "report.html");
         List<String> strings0 = new ArrayList<String>();
         List<String> strings1 = new ArrayList<String>();
-        for (TestScheduler.JobResult jr : Util.copy(results)) {
-            if (!jr.isValid()) {
-                Log.warn("[" + jr.getJobRequest().getJobName() + "] Didn't have the result, skipping.");
-                String stdout = jr.getStdout();
-                if (stdout != null) {
-                    String[] split = stdout.split("\n");
-                    String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
-                    Log.warn("    " + String.join("\n    ", copyOfRange));
-                }
-                removeAllSimilar(jr, results);
-            }
-        }
 
-        for (TestScheduler.JobResult jr_ : results) {
+        for (TestScheduler.JobResult jr_ : Util.safeCopy(results)) {
             JobResult jr = (JobResult) jr_;
             JobRequest jobRequest = (JobRequest) jr.getJobRequest();
             String line = "\n{\"filename\":\"" + jobRequest.getOfName() + "\",\"ptIdx\":\"" + jobRequest.getPtIdx()
@@ -437,8 +455,20 @@ public class CompareScheduler implements TestScheduler {
 
             FileUtils.writeStringToFile(reportFile, templ);
 
-            System.out.println("Saved report to file: " + reportFile.getAbsolutePath());
+            if (!reportMessagePrinted) {
+                System.out.println("Saved report to file: " + reportFile.getAbsolutePath());
+                reportMessagePrinted = true;
+            }
         }
+    }
+
+    private String tailOfLogFile(String stdout) {
+        if (stdout == null)
+            return "";
+        String[] split = stdout.split("\n");
+        String[] copyOfRange = Arrays.copyOfRange(split, Math.max(0, split.length - 10), split.length);
+        String message = "    " + String.join("\n    ", copyOfRange);
+        return message;
     }
 
     private void removeAllSimilar(TestScheduler.JobResult jr, List<TestScheduler.JobResult> results) {

@@ -23,6 +23,8 @@ import com.google.api.services.compute.model.Instance;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import testrunner.BaseJob.Status;
+
 /**
  * This agent is going to balance the tasks between the subordinate agents
  * 
@@ -39,12 +41,19 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     private long startTime;
     private HttpIface http;
     private GCloudManager gcloudManager;
+    private File stateFolder;
 
     public BalancingAgent(File agentBase, List<String> delegateUrls, String myUrl) {
         this.myUrl = myUrl;
         int nThreads = Runtime.getRuntime().availableProcessors();
         this.executor = Executors.newScheduledThreadPool(Math.min(64, nThreads * 8));
         files = new FileStore(new File(agentBase, "store"));
+        stateFolder = new File(agentBase, "state");
+        if (!stateFolder.isDirectory()) {
+            if (stateFolder.exists())
+                stateFolder.delete();
+            stateFolder.mkdirs();
+        }
         this.delegateUrls = delegateUrls;
         this.http = new HttpIface(1000 /* connectionTimeout */, 20000 /* socketTimeout */);
         this.startTime = System.currentTimeMillis();
@@ -200,6 +209,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                     Log.info("[" + bj.getName() + "@" + bj.getPriority() + "] Deleting file '" + bj.getJobArchiveRef()
                             + "'.");
                     files.delete(bj.getJobArchiveRef());
+                    bj.getDelegate().dropResultArchive();
                 } catch (Exception e) {
                     Log.error(
                             "[" + bj.getName() + "@" + bj.getPriority() + "] couldn't update the job status to DONE.");
@@ -266,6 +276,42 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
                 }
             }
         }, 100, 100, TimeUnit.MILLISECONDS);
+        
+        executor.scheduleAtFixedRate(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    dumpState();
+                } catch (Exception e) {
+                    Log.error("Problem dumping state");
+                    e.printStackTrace(System.out);
+                }
+            }
+        }, 10, 10, TimeUnit.SECONDS);
+    }
+    
+    public void dumpState() {
+        File stateFile = new File(stateFolder, "state_" + System.currentTimeMillis() + ".json");
+        StringBuilder sb = new StringBuilder();
+        List<BaseJob> jobsCopy = Util.safeCopy(jobs);
+        sb.append("jobs: [");
+        for (BaseJob baseJob : jobsCopy) {
+            BalancingJob bj = (BalancingJob)baseJob;
+            sb.append("{");
+            sb.append("\"name\": \""             + bj.getName()                + "\",");
+            sb.append("\"priority\":\""          + bj.getPriority()            + "\",");
+            sb.append("\"cpuReq\":\""            + bj.getCpuReq()              + "\",");
+            sb.append("\"status\":\""            + bj.getStatus()              + "\",");
+            sb.append("\"jobArchiveRef:\""       + bj.getJobArchiveRef()       + "\",");
+            sb.append("\"resultArchiveRef:\""    + bj.getResultArchiveRef()    + "\",");
+            sb.append("\"remoteJobArchiveRef:\"" + bj.getRemoteJobArchiveRef() + "\",");
+            sb.append("\"remoteUrl:\""           + bj.getRemoteUrl()           + "\",");
+            if (bj.getDelegate() != null && bj.getDelegate().getAgent() != null) {
+                sb.append("\"remoteUrl:\""           + bj.getDelegate().getAgent().getUrl() + "\",");
+            }
+            sb.append("}");
+        }
+        sb.append("]");
     }
 
     @Override
@@ -295,9 +341,14 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
             List<String> delegates = FileUtils.readLines(new File(a.get(2)));
             agent = new BalancingAgent(agentBase, delegates, a.get(3));
         }
-        
+        agent.restoreState();
         agent.startBalancingTasks();
         agent.startAgent(port);
+    }
+
+    private void restoreState() {
+        //
+        
     }
 
     private static void printHelp() {

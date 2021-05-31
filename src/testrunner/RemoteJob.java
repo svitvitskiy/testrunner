@@ -103,6 +103,12 @@ public class RemoteJob {
         resultArchive = temp;
         return temp;
     }
+    
+    public void dropResultArchive() {
+        if (resultArchive != null) {
+            resultArchive.delete();
+        }
+    }
 
     public <T> Future<T> onFinished(Callable<T> runnable) {
         if (this.doneCallback != null)
