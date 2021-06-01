@@ -300,7 +300,7 @@ public class CompareScheduler implements TestScheduler {
         try {
             String psnrTxt = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + "_psnr.csv");
             String ssimTxt = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + "_ssim.csv");
-            long fileSize = ZipUtils.getFileSize(resultArchive, jobRequest.getOfName() + "." + getFileExtension(jobRequest.getDescriptor().getCodec()));
+            String fileSizeRaw = ZipUtils.getFileAsString(resultArchive, "result.size");
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
             boolean errorFlag = ZipUtils.containsFile(resultArchive, "error.flag");
 
@@ -318,7 +318,7 @@ public class CompareScheduler implements TestScheduler {
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
 
-            if (fileSize < 0) {
+            if (fileSizeRaw == null || !fileSizeRaw.trim().matches("[0-9]+")) {
                 printJobError(jobRequest, stdout);
                 return new JobResult(jobRequest, false, stdout, 0, 0, 0);
             }
@@ -326,9 +326,6 @@ public class CompareScheduler implements TestScheduler {
             double psnr = parseCsvVal(psnrTxt);
             double ssim = parseCsvVal(ssimTxt);
 
-//            System.out.println((char) 27 + "[92m+ " + jobRequest.getOfName() + "#" + jobRequest.getPtIdx() + "("
-//                    + jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()] + ") @ " + new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())
-//                    + (char) 27 + "[0m");
             if (!hadOutput) {
                 System.out.println(String.format(FORMAT_LINE, "File name", "Pt", "Encoder", "Date"));
                 hadOutput = true;
@@ -337,7 +334,7 @@ public class CompareScheduler implements TestScheduler {
                     String.valueOf(jobRequest.getPtIdx()),
                     jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()],
                     new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())));
-            JobResult result = new JobResult(jobRequest, true, "", fileSize, psnr, ssim);
+            JobResult result = new JobResult(jobRequest, true, "", Integer.parseInt(fileSizeRaw.trim()), psnr, ssim);
             _results.add(result);
             generateReport(_results, descriptor);
 
@@ -348,7 +345,7 @@ public class CompareScheduler implements TestScheduler {
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, 0, 0);
         }
     }
-
+    
     private void printJobError(JobRequest jobRequest, String stdout) {
         System.out.println(String.format(ERROR_LINE, capLen(jobRequest.getOfName(), 40),
                 String.valueOf(jobRequest.getPtIdx()),
