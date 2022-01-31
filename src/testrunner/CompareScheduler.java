@@ -421,6 +421,8 @@ public class CompareScheduler implements TestScheduler {
         List<String> strings1 = new ArrayList<String>();
 
         for (TestScheduler.JobResult jr_ : Util.safeCopy(results)) {
+            if (! (jr_ instanceof JobResult))
+                continue;
             JobResult jr = (JobResult) jr_;
             JobRequest jobRequest = (JobRequest) jr.getJobRequest();
             String line = "\n{\"filename\":\"" + jobRequest.getOfName() + "\",\"ptIdx\":\"" + jobRequest.getPtIdx()
