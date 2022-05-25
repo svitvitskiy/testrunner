@@ -97,11 +97,12 @@ public class CompareScheduler implements TestScheduler {
         private String codec;
         private String mode;
         private int effort;
-        private String extraArgs;
+        private String commonArgs;
+        private String[] diffArgs;
         private Map<String, String> profileArgs;
 
         private Descriptor(List<String> dataset, String[] encBin, String[] encName, int maxFrames, String profile,
-                String codec, String mode, int effort, String extraArgs, Map<String, String> profileArgs) {
+                String codec, String mode, int effort, String commonArgs, String[] diffArgs, Map<String, String> profileArgs) {
             this.dataset = dataset;
             this.encBin = encBin;
             this.encName = encName;
@@ -110,15 +111,14 @@ public class CompareScheduler implements TestScheduler {
             this.codec = codec;
             this.mode = mode;
             this.effort = effort;
-            this.extraArgs = extraArgs;
+            this.commonArgs = commonArgs;
+            this.diffArgs = diffArgs;
             this.profileArgs = profileArgs;
         }
 
         public static Descriptor parse(File baseDir, String str, Map<String, String> params) throws IOException {
-            str = str.replace("$HOME", System.getProperty("user.home"));
-            for (Entry<String, String> entry : params.entrySet()) {
-                str = str.replace("$" + entry.getKey(), entry.getValue());
-            }
+            params.put("HOME", System.getProperty("user.home"));
+            str = processParams(str, params);
 
             JsonObject jsonObject = JsonParser.parseString(str).getAsJsonObject();
             String profile = jsonObject.get("profile").getAsString();
@@ -139,16 +139,12 @@ public class CompareScheduler implements TestScheduler {
                 throw new RuntimeException("'encBin' and 'encName' must be both present and have 2 elements in each array.");
             }
 
-            JsonElement jsonElement0 = jsonObject.get("maxFrames");
-            int maxFrames = jsonElement0 == null ? 100 : jsonElement0.getAsInt();
-            JsonElement jsonElement1 = jsonObject.get("codec");
-            String codec = jsonElement1 == null ? "av1" : jsonElement1.getAsString();
-            JsonElement jsonElement2 = jsonObject.get("mode");
-            String mode = jsonElement2 == null ? "bitrate" : jsonElement2.getAsString();
-            JsonElement jsonElement3 = jsonObject.get("effort");
-            int effort = jsonElement3 == null ? 0 : jsonElement3.getAsInt();
-            JsonElement jsonElement4 = jsonObject.get("extraArgs");
-            String extraArgs = jsonElement4 == null ? "" : jsonElement4.getAsString();
+            int maxFrames = getJsonInt(jsonObject, "maxFrames");
+            String codec = getJsonString(jsonObject, "codec");
+            String mode = getJsonString(jsonObject, "mode");
+            int effort = getJsonInt(jsonObject, "effort");
+            String commonArgs = getJsonString(jsonObject, "commonArgs");
+            String[] diffArgs = parseArray(jsonObject.get("diffArgs").getAsJsonArray());
             
             JsonElement jsonElement5 = jsonObject.get("profileArgs");
             Map<String, String> profileArgs = new HashMap<String, String>();
@@ -159,7 +155,51 @@ public class CompareScheduler implements TestScheduler {
                 }
             }
 
-            return new Descriptor(dataset, encBin, encName, maxFrames, profile, codec, mode, effort, extraArgs, profileArgs);
+            return new Descriptor(dataset, encBin, encName, maxFrames, profile, codec, mode, effort, commonArgs, diffArgs, profileArgs);
+        }
+
+        private static String processParams(String str, Map<String, String> params) {
+            char[] charArray = str.toCharArray();
+            int state = 0;
+            StringBuilder varName = new StringBuilder();
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < charArray.length; i++) {
+                if (state == 0 && charArray[i] == '$') {
+                    ++ state;
+                } else if (state == 1 && charArray[i] == '$') {
+                    text.append('$');
+                    state = 0;
+                } else if (state == 1 && charArray[i] == '{') {
+                    ++ state;
+                } else if (state == 2 && charArray[i] == '}') {
+                    String val = params.get(varName.toString());
+                    if (val != null) {
+                        text.append(val);
+                    }
+                    varName = new StringBuilder();
+                    state = 0;
+                } else {
+                    if (state == 2) {
+                        varName.append(charArray[i]);
+                    } else {
+                        text.append(charArray[i]);
+                    }
+                }
+            }
+            
+            return text.toString();
+        }
+
+        private static String getJsonString(JsonObject jsonObject, String name) {
+            JsonElement jsonElement4 = jsonObject.get(name);
+            String ret = jsonElement4 == null ? "" : jsonElement4.getAsString();
+            return ret;
+        }
+
+        private static int getJsonInt(JsonObject jsonObject, String name) {
+            JsonElement jsonElement4 = jsonObject.get(name);
+            int ret = jsonElement4 == null ? 0 : jsonElement4.getAsInt();
+            return ret;
         }
 
         private static String[] parseArray(JsonArray encNames) {
@@ -202,12 +242,16 @@ public class CompareScheduler implements TestScheduler {
             return effort;
         }
 
-        public String getExtraArgs() {
-            return extraArgs;
+        public String getCommonArgs() {
+            return commonArgs;
         }
 
         public Map<String, String> getProfileArgs() {
             return profileArgs;
+        }
+
+        public String[] getDiffArgs() {
+            return diffArgs;
         }
     }
 
@@ -238,11 +282,11 @@ public class CompareScheduler implements TestScheduler {
                 String arg = args[i];
                 if (arg.startsWith("-D")) {
                   String[] split = arg.substring(2).split(":");
-                  params.put(split[0], split[1]);
+                  params.put(split[0], split.length == 2 ? split[1] : "");
                 } else if (arg.startsWith("-R")) {
                     // run time args
                     String[] split = arg.substring(2).split(":");
-                    runArgs.put(split[0], split[1]);
+                    runArgs.put(split[0], split.length == 2 ? split[1] : "");
                 } else if (arg.startsWith("-p")) {
                     priority = Integer.parseInt(arg.substring(2));
                 }
@@ -372,6 +416,7 @@ public class CompareScheduler implements TestScheduler {
             int height = workoutH(fileName);
 
             File encBinF = new File(jobRequest.getDescriptor().getEncBin()[jobRequest.getEnIdx()]);
+            String diffArgs = jobRequest.getDescriptor().getDiffArgs()[jobRequest.getEnIdx()];
 
             runSh.append("FILENAME=\"" + fileName + "\"\n");
             runSh.append("ENC_BN=\"" + encBinF.getName() + "\"\n");
@@ -385,7 +430,7 @@ public class CompareScheduler implements TestScheduler {
             runSh.append("DF_BN=\"" + jobRequest.getOfName() + "_recon.yuv\"\n");
             runSh.append("MODE=\"" + jobRequest.getDescriptor().getMode() + "\"\n");
             runSh.append("EFFORT=\"" + jobRequest.getDescriptor().getEffort() + "\"\n");
-            runSh.append("EXTRA_ARGS=\"" + jobRequest.getDescriptor().getExtraArgs() + "\"\n");
+            runSh.append("EXTRA_ARGS=\"" + jobRequest.getDescriptor().getCommonArgs() + " " + diffArgs + "\"\n");
             for (Entry<String, String> entry : runArgs.entrySet()) {
                 runSh.append("RUN_ARGS_" + entry.getKey().toUpperCase() + "=\"" + entry.getValue() + "\"\n");
             }
