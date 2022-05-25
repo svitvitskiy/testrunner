@@ -3,6 +3,9 @@ package testrunner;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -65,26 +68,20 @@ public class CompareScheduler implements TestScheduler {
 
     public static class JobResult extends TestScheduler.JobResult {
         private long fileSize;
-        private double psnr;
-        private double ssim;
+        private double[] metrics;
 
-        public JobResult(JobRequest jobRequest, boolean valid, String stdout, long fileSize, double psnr, double ssim) {
+        public JobResult(JobRequest jobRequest, boolean valid, String stdout, long fileSize, double[] metrics) {
             super(jobRequest, valid, stdout);
             this.fileSize = fileSize;
-            this.psnr = psnr;
-            this.ssim = ssim;
+            this.metrics = metrics;
         }
 
         public long getFileSize() {
             return fileSize;
         }
 
-        public double getPsnr() {
-            return psnr;
-        }
-
-        public double getSsim() {
-            return ssim;
+        public double[] getMetrics() {
+            return metrics;
         }
     }
 
@@ -144,7 +141,11 @@ public class CompareScheduler implements TestScheduler {
             String mode = getJsonString(jsonObject, "mode");
             int effort = getJsonInt(jsonObject, "effort");
             String commonArgs = getJsonString(jsonObject, "commonArgs");
-            String[] diffArgs = parseArray(jsonObject.get("diffArgs").getAsJsonArray());
+            JsonElement el1 = jsonObject.get("diffArgs");
+            String[] diffArgs = new String[] {"",""};
+            if (el1 != null) {
+                diffArgs = parseArray(el1.getAsJsonArray());
+            }
             
             JsonElement jsonElement5 = jsonObject.get("profileArgs");
             Map<String, String> profileArgs = new HashMap<String, String>();
@@ -329,7 +330,7 @@ public class CompareScheduler implements TestScheduler {
         return result;
     }
     boolean hadOutput = false;
-    private static final String FORMAT_LINE = (char) 27 + "[92m%40s | %2s | %15s | %s" + (char) 27 + "[0m";
+    private static final String FORMAT_LINE = (char) 27 + "[92m%40s | %2s | %15s | %8s | %6s | %6s | %s" + (char) 27 + "[0m";
     private static final String ERROR_LINE = (char) 27 + "[91m%40s | %2s | %15s | %s" + (char) 27 + "[0m";
     
     private static String capLen(String str, int len) {
@@ -342,43 +343,40 @@ public class CompareScheduler implements TestScheduler {
     public TestScheduler.JobResult processResult(TestScheduler.JobRequest jobRequest_, File resultArchive) {
         JobRequest jobRequest = (JobRequest) jobRequest_;
         try {
-            String psnrTxt = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + "_psnr.csv");
-            String ssimTxt = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + "_ssim.csv");
+            String vmafJson = ZipUtils.getFileAsString(resultArchive, jobRequest.getOfName() + ".vmaf.json");
             String fileSizeRaw = ZipUtils.getFileAsString(resultArchive, "result.size");
             String stdout = ZipUtils.getFileAsString(resultArchive, "stdout.log");
             boolean errorFlag = ZipUtils.containsFile(resultArchive, "error.flag");
 
             if (errorFlag) {
                 printJobError(jobRequest, stdout);
-                return new JobResult(jobRequest, false, stdout, 0, 0, 0);
-            }
-            if (psnrTxt == null) {
-                printJobError(jobRequest, stdout);
-                return new JobResult(jobRequest, false, stdout, 0, 0, 0);
+                return new JobResult(jobRequest, false, stdout, 0, new double[3]);
             }
 
-            if (ssimTxt == null) {
+            if (vmafJson == null) {
                 printJobError(jobRequest, stdout);
-                return new JobResult(jobRequest, false, stdout, 0, 0, 0);
+                return new JobResult(jobRequest, false, stdout, 0, new double[3]);
             }
 
             if (fileSizeRaw == null || !fileSizeRaw.trim().matches("[0-9]+")) {
                 printJobError(jobRequest, stdout);
-                return new JobResult(jobRequest, false, stdout, 0, 0, 0);
-            }
-
-            double psnr = parseCsvVal(psnrTxt);
-            double ssim = parseCsvVal(ssimTxt);
+                return new JobResult(jobRequest, false, stdout, 0, new double[3]);
+            }            
 
             if (!hadOutput) {
-                System.out.println(String.format(FORMAT_LINE, "File name", "Pt", "Encoder", "Date"));
+                System.out.println(String.format(FORMAT_LINE, "File name", "Pt", "Encoder", "Size", "PSNR", "VMAF", "Date"));
                 hadOutput = true;
             }
+            double metrics[] = parseMetrics(vmafJson);
+            int fileSize = Integer.parseInt(fileSizeRaw.trim());
             System.out.println(String.format(FORMAT_LINE, capLen(jobRequest.getOfName(), 40),
                     String.valueOf(jobRequest.getPtIdx()),
                     jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()],
+                    String.valueOf(fileSize),
+                    String.format("%2.3f", metrics[0]), String.format("%2.3f", metrics[1]),
                     new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())));
-            JobResult result = new JobResult(jobRequest, true, "", Integer.parseInt(fileSizeRaw.trim()), psnr, ssim);
+            
+            JobResult result = new JobResult(jobRequest, true, "", fileSize, metrics);
             _results.add(result);
             generateReport(_results, descriptor);
 
@@ -386,10 +384,35 @@ public class CompareScheduler implements TestScheduler {
         } catch (Exception e) {
             Log.error("[" + jobRequest.getJobName() + "] Couldn't process the job result.");
             e.printStackTrace(System.out);
-            return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, 0, 0);
+            return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, new double[3]);
         }
     }
     
+    private static String getJsonValue(JsonElement obj, String ... path) {
+        if (path.length == 0) {
+            return obj != null ? obj.getAsString() : null;
+        }
+        if (!obj.isJsonObject())
+            return null;
+        JsonElement el = obj.getAsJsonObject().get(path[0]);
+        return getJsonValue(el, path.length > 1 ? Arrays.copyOfRange(path, 1, path.length) : new String[0]);
+    }
+    
+    private static double[] parseMetrics(String vmafJson) {
+        JsonElement json = JsonParser.parseString(vmafJson);
+        String psnr = getJsonValue(json, "pooled_metrics", "psnr_y", "mean");
+        String vmaf = getJsonValue(json, "pooled_metrics", "vmaf", "mean");
+        String ssim = getJsonValue(json, "pooled_metrics", "float_ssim", "mean");
+
+        return new double[] { psnr != null ? Double.parseDouble(psnr) : 0f,
+                vmaf != null ? Double.parseDouble(vmaf) : 0f, ssim != null ? Double.parseDouble(ssim) : 0f };
+    }
+    
+//    public static void main(String[] args) throws IOException {
+//        double[] parseMetrics = parseMetrics(FileUtils.readFileToString(new File(args[0])));
+//        System.out.println("cool");
+//    }
+
     private void printJobError(JobRequest jobRequest, String stdout) {
         System.out.println(String.format(ERROR_LINE, capLen(jobRequest.getOfName(), 40),
                 String.valueOf(jobRequest.getPtIdx()),
@@ -471,7 +494,7 @@ public class CompareScheduler implements TestScheduler {
             JobResult jr = (JobResult) jr_;
             JobRequest jobRequest = (JobRequest) jr.getJobRequest();
             String line = "\n{\"filename\":\"" + jobRequest.getOfName() + "\",\"ptIdx\":\"" + jobRequest.getPtIdx()
-                    + "\",\"dist\":[\"" + jr.getPsnr() + "\",\"" + jr.getPsnr() + "\",\"" + jr.getSsim()
+                    + "\",\"dist\":[\"" + jr.getMetrics()[0] + "\",\"" + jr.getMetrics()[1] + "\",\"" + jr.getMetrics()[2]
                     + "\"],\"rate\":[\"" + jr.getFileSize() + "\",\"" + jr.getFileSize() + "\",\"" + jr.getFileSize()
                     + "\"]}";
             if (jobRequest.getEnIdx() == 0)
@@ -524,14 +547,6 @@ public class CompareScheduler implements TestScheduler {
                 it.remove();
             }
         }
-    }
-
-    private double parseCsvVal(String txt) {
-        String[] lines = txt.split("\n");
-        if (lines.length == 0)
-            return 0;
-
-        return Double.parseDouble(lines[lines.length - 1].replace("average,", ""));
     }
 
     public static int workoutW(String filename) {
