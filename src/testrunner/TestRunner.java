@@ -173,7 +173,12 @@ public class TestRunner {
             resultArchive.renameTo(dest);
             resultArchive = dest;
     
-            return scheduler.processResult(jobRequest, resultArchive);
+            JobResult processResult = scheduler.processResult(jobRequest, resultArchive);
+            if (processResult.isValid()) {
+              // everything went well, nothing to see there
+              jobRequest.getJobArchive().delete();
+            }
+            return processResult;
         } else {
             scheduler.processError(jobRequest);
             return new JobResult(jobRequest, false, "");
