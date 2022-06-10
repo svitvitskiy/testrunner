@@ -8,6 +8,8 @@ import java.net.URL;
 import org.apache.http.HttpResponse;
 import org.apache.http.util.EntityUtils;
 
+import testrunner.HttpIface.HttpIfaceException;
+
 public class BalancingJob extends BaseJob {
     private RemoteJob delegate;
     private boolean downloading;
@@ -52,7 +54,7 @@ public class BalancingJob extends BaseJob {
     }
 
     @Override
-    public InputStream getLog() throws IOException {
+    public InputStream getLog() throws IOException, HttpIfaceException {
         URL url = new URL(new URL(this.delegate.getAgent().getUrl()), "/log/" + delegate.getName());
         Log.info("[" + getName() + "] Proxying log file from remote agent at: '" + url.toExternalForm() + "'");
         HttpResponse response = http.openConnection(url);

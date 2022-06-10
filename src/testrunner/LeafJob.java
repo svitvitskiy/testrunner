@@ -13,6 +13,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import testrunner.HttpIface.HttpIfaceException;
+
 /**
  * A wrapper for a job. It will run a job presented as a zip archive with a
  * run.sh inside.
@@ -107,7 +109,7 @@ public class LeafJob extends BaseJob {
         return logFile == null ? null : new FileInputStream(logFile);
     }
 
-    private void downloadJobArchive(HttpIface http) throws IOException {
+    private void downloadJobArchive(HttpIface http) throws IOException, HttpIfaceException {
         Log.info("[" + getName() + "] Downloading job archive '" + getRemoteJobArchiveRef() + "' from '"
                 + getRemoteUrl() + "'.");
         try (InputStream is = http

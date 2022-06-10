@@ -1,6 +1,5 @@
 package testrunner;
 
-import java.awt.Component.BaselineResizeBehavior;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -14,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
 
+import testrunner.HttpIface.HttpIfaceException;
 import testrunner.TestScheduler.JobRequest;
 import testrunner.TestScheduler.JobResult;
 
@@ -28,7 +28,7 @@ public class TestRunner {
     private TestScheduler scheduler;
     private HttpIface http;
 
-    public TestRunner(TestScheduler scheduler) {
+    public TestRunner(TestScheduler scheduler) throws HttpIfaceException {
         this.scheduler = scheduler;
         this.http = new HttpIface(1000 /*connectionTimeout*/, 20000 /*socketTimeout*/);
     }
@@ -159,7 +159,7 @@ public class TestRunner {
         }
     }
 
-    private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) throws IOException {
+    private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) throws IOException, HttpIfaceException {
         if (job == null)
             return new JobResult(jobRequest, false, "Remote job was null");
         if (job.getStatus() == BaseJob.Status.DONE) {

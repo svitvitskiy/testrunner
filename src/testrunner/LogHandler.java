@@ -10,6 +10,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.IOUtils;
 
+import testrunner.HttpIface.HttpIfaceException;
+
 public class LogHandler implements BaseAgent.Handler {
     private List<BaseJob> jobs;
 
@@ -33,13 +35,16 @@ public class LogHandler implements BaseAgent.Handler {
         if (foundJob == null) {
             response.setStatus(404);
         } else {
-            InputStream log = foundJob.getLog();
-            if (log == null) {
-                response.setStatus(404);
-            } else {
-                response.setStatus(200);
+            try (InputStream log = foundJob.getLog()) {
+                if (log == null) {
+                    response.setStatus(404);
+                } else {
+                    response.setStatus(200);
 
-                IOUtils.copy(log, response.getOutputStream());
+                    IOUtils.copy(log, response.getOutputStream());
+                }
+            } catch (HttpIfaceException e) {
+                throw new ServletException(e);
             }
         }
     }

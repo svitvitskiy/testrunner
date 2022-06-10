@@ -3,20 +3,35 @@ package testrunner;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
 
 import org.apache.http.HeaderElement;
 import org.apache.http.HeaderElementIterator;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.config.Registry;
+import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
 import org.apache.http.conn.HttpClientConnectionManager;
+import org.apache.http.conn.socket.ConnectionSocketFactory;
+import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.MultipartEntity;
 import org.apache.http.entity.mime.content.FileBody;
@@ -26,6 +41,9 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeaderElementIterator;
 import org.apache.http.protocol.HTTP;
 import org.apache.http.protocol.HttpContext;
+import org.apache.http.ssl.SSLContextBuilder;
+import org.apache.http.ssl.SSLContexts;
+import org.apache.http.ssl.TrustStrategy;
 
 public class HttpIface {
     private HttpClientConnectionManager connManager;
@@ -33,14 +51,62 @@ public class HttpIface {
     private int connectionTimeout;
     private int socketTimeout;
 
-    public HttpIface(int connectionTimeout, int socketTimeout) {
-        PoolingHttpClientConnectionManager connManager = new PoolingHttpClientConnectionManager();
-        connManager.setMaxTotal(10);
-        connManager.setDefaultMaxPerRoute(10);
-        this.connManager = connManager;
-        this.keepAliveStrategy = new MyKeepAliveStrategy();
-        this.connectionTimeout = connectionTimeout;
-        this.socketTimeout = socketTimeout;
+    public static class HttpIfaceException extends Exception {
+        public HttpIfaceException() {
+            super();
+        }
+
+        public HttpIfaceException(String message, Throwable cause, boolean enableSuppression,
+                boolean writableStackTrace) {
+            super(message, cause, enableSuppression, writableStackTrace);
+        }
+
+        public HttpIfaceException(String message, Throwable cause) {
+            super(message, cause);
+        }
+
+        public HttpIfaceException(String message) {
+            super(message);
+        }
+
+        public HttpIfaceException(Throwable cause) {
+            super(cause);
+        }
+    }
+
+    public HttpIface(int connectionTimeout, int socketTimeout) throws HttpIfaceException {
+        try {
+            PoolingHttpClientConnectionManager connManager = new PoolingHttpClientConnectionManager(
+                    getSocketFactoryRegistry());
+            connManager.setMaxTotal(10);
+            connManager.setDefaultMaxPerRoute(10);
+            this.connManager = connManager;
+            this.keepAliveStrategy = new MyKeepAliveStrategy();
+            this.connectionTimeout = connectionTimeout;
+            this.socketTimeout = socketTimeout;
+        } catch (Exception e) {
+            throw new HttpIfaceException(e);
+        }
+    }
+
+    private Registry<ConnectionSocketFactory> getSocketFactoryRegistry()
+            throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+        Registry<ConnectionSocketFactory> socketFactoryRegistry = RegistryBuilder.<ConnectionSocketFactory>create()
+                .register("https", getSslSocketFactory())
+                .register("http", PlainConnectionSocketFactory.getSocketFactory()).build();
+        return socketFactoryRegistry;
+    }
+
+    private SSLConnectionSocketFactory getSslSocketFactory()
+            throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
+        SSLContextBuilder builder = new SSLContextBuilder();
+        builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
+        SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(builder.build(), new HostnameVerifier() {
+            public boolean verify(java.lang.String arg0, javax.net.ssl.SSLSession arg1) {
+                return true;
+            }
+        });
+        return sslsf;
     }
 
     private static class MyKeepAliveStrategy implements ConnectionKeepAliveStrategy {
@@ -59,32 +125,44 @@ public class HttpIface {
         }
     };
 
-    public InputStream openUrlStream(URL url) throws IllegalStateException, IOException {
+    public InputStream openUrlStream(URL url) throws HttpIfaceException {
 
         HttpResponse response = openConnection(url);
-        return response.getEntity().getContent();
+        try {
+            return response.getEntity().getContent();
+        } catch (IOException e) {
+            throw new HttpIfaceException(e);
+        }
     }
 
-    public HttpResponse openConnection(URL url) throws IOException, ClientProtocolException {
-        CloseableHttpClient client = getClient();
+    public HttpResponse openConnection(URL url) throws HttpIfaceException {
+        try {
+            CloseableHttpClient client = getClient();
 
-        HttpGet httpget = new HttpGet(url.toExternalForm());
-        httpget.setConfig(getRequestConfig());
-        HttpResponse response = client.execute(httpget);
-        return response;
+            HttpGet httpget = new HttpGet(url.toExternalForm());
+            httpget.setConfig(getRequestConfig());
+            HttpResponse response = client.execute(httpget);
+            return response;
+        } catch (Exception e) {
+            throw new HttpIfaceException(e);
+        }
     }
 
-    public HttpResponse upload(URL url, File uploadFile, String name) throws ClientProtocolException, IOException {
-        CloseableHttpClient client = getClient();
-        HttpPost httpPost = new HttpPost(url.toExternalForm());
+    public HttpResponse upload(URL url, File uploadFile, String name) throws HttpIfaceException {
+        try {
+            CloseableHttpClient client = getClient();
+            HttpPost httpPost = new HttpPost(url.toExternalForm());
 
-        FileBody uploadFilePart = new FileBody(uploadFile);
-        MultipartEntity reqEntity = new MultipartEntity();
-        reqEntity.addPart("file", uploadFilePart);
-        httpPost.setConfig(getRequestConfig());
-        httpPost.setEntity(reqEntity);
+            FileBody uploadFilePart = new FileBody(uploadFile);
+            MultipartEntity reqEntity = new MultipartEntity();
+            reqEntity.addPart("file", uploadFilePart);
+            httpPost.setConfig(getRequestConfig());
+            httpPost.setEntity(reqEntity);
 
-        return client.execute(httpPost);
+            return client.execute(httpPost);
+        } catch (Exception e) {
+            throw new HttpIfaceException(e);
+        }
     }
 
     private RequestConfig getRequestConfig() {
@@ -93,22 +171,26 @@ public class HttpIface {
         return requestConfig;
     }
 
-    private CloseableHttpClient getClient() {
+    private CloseableHttpClient getClient() throws NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
         CloseableHttpClient client = HttpClients.custom().setKeepAliveStrategy(keepAliveStrategy)
-                .setConnectionManager(connManager).build();
+                .setSSLSocketFactory(getSslSocketFactory()).setConnectionManager(connManager).build();
         return client;
     }
 
-    public HttpResponse postString(URL url, String val) throws ClientProtocolException, IOException {
-        CloseableHttpClient client = getClient();
+    public HttpResponse postString(URL url, String val) throws HttpIfaceException {
+        try {
+            CloseableHttpClient client = getClient();
 
-        HttpPost httpPost = new HttpPost(url.toExternalForm());
-        httpPost.setConfig(getRequestConfig());
+            HttpPost httpPost = new HttpPost(url.toExternalForm());
+            httpPost.setConfig(getRequestConfig());
 
-        StringEntity entity = new StringEntity(val);
-        httpPost.setEntity(entity);
-        httpPost.setHeader("Accept", "application/json");
-        httpPost.setHeader("Content-type", "application/json");
-        return client.execute(httpPost);
+            StringEntity entity = new StringEntity(val);
+            httpPost.setEntity(entity);
+            httpPost.setHeader("Accept", "application/json");
+            httpPost.setHeader("Content-type", "application/json");
+            return client.execute(httpPost);
+        } catch (Exception e) {
+            throw new HttpIfaceException(e);
+        }
     }
 }

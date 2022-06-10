@@ -18,6 +18,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -25,6 +26,7 @@ import org.apache.commons.io.IOUtils;
 import org.thymeleaf.context.Context;
 
 import testrunner.AgentConnection.Event;
+import testrunner.HttpIface.HttpIfaceException;
 
 public class BalancingStatusPage implements BaseAgent.Handler {
     private List<BaseJob> jobs;
@@ -42,11 +44,15 @@ public class BalancingStatusPage implements BaseAgent.Handler {
     }
 
     @Override
-    public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
         String requestURI = request.getRequestURI();
         List<AgentConnection> safeCopy = Util.safeCopy(delegates);
         if (requestURI.startsWith("/proxy")) {
-            proxy(response, requestURI, safeCopy);
+            try {
+                proxy(response, requestURI, safeCopy);
+            } catch (HttpIfaceException e) {
+                throw new ServletException(e);
+            }
         } else {
             String action = request.getParameter("action");
             if ("wipejobs".equals(action)) {
@@ -127,7 +133,7 @@ public class BalancingStatusPage implements BaseAgent.Handler {
     }
 
     private void proxy(HttpServletResponse response, String requestURI, List<AgentConnection> safeCopy)
-            throws IOException, MalformedURLException {
+            throws IOException, MalformedURLException, HttpIfaceException {
         int idx = Integer.parseInt(requestURI.replace("/proxy/", ""));
         if (safeCopy.size() <= idx) {
             return;

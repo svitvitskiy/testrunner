@@ -26,6 +26,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import testrunner.BaseJob.Status;
+import testrunner.HttpIface.HttpIfaceException;
 
 public class AgentConnection {
     private static final long GOOD_UPTIME_MS = 30000;
@@ -100,7 +101,7 @@ public class AgentConnection {
             future.cancel(false);
     }
 
-    private void updateJobStatus() throws MalformedURLException, IOException {
+    private void updateJobStatus() throws IOException, HttpIfaceException {
         boolean updateNecessary = false;
         for (RemoteJob remoteJob : Util.safeCopy(jobs)) {
             Status status = remoteJob.getStatus();
@@ -206,7 +207,7 @@ public class AgentConnection {
         this.availableCPU = availableCPU;
     }
 
-    public RemoteJob scheduleJob(String name, File jobArchive, int priority) throws IOException {
+    public RemoteJob scheduleJob(String name, File jobArchive, int priority) throws IOException, HttpIfaceException {
         if (!online)
             return RemoteJob.WAIT;
         String fileid = uploadJobArchive(jobArchive);
@@ -227,7 +228,7 @@ public class AgentConnection {
     }
 
     public RemoteJob scheduleJobCallback(String name, String jobArchiveRef, int priority, String manifest, String myUrl)
-            throws IOException {
+            throws IOException, HttpIfaceException {
         if (!online)
             return null;
         String json = "{" + "\"jobName\":\"" + name + "\"," + "\"remoteJobArchiveRef\":\"" + jobArchiveRef + "\","
@@ -249,7 +250,7 @@ public class AgentConnection {
         return job;
     }
 
-    private void rescheduleJob(RemoteJob remoteJob) throws IOException {
+    private void rescheduleJob(RemoteJob remoteJob) throws IOException, HttpIfaceException {
         remoteJob.setStatus(BaseJob.Status.NEW);
         String fileid = uploadJobArchive(remoteJob.getJobArchive());
         Log.info("[" + remoteJob.getName() + "] file id:" + fileid);
@@ -258,14 +259,13 @@ public class AgentConnection {
         }
     }
 
-    private boolean scheduleJob(String name, String fileid, int priority) throws IOException {
+    private boolean scheduleJob(String name, String fileid, int priority) throws IOException, HttpIfaceException {
         String json = "{\"jobName\":\"" + name + "\"," + "\"jobArchiveRef\":\"" + fileid + "\"," + "\"priority\":\""
                 + priority + "\"" + "}";
         return doScheduleJobArchive(name, json);
     }
 
-    private boolean doScheduleJobArchive(String name, String json)
-            throws UnsupportedEncodingException, IOException, ClientProtocolException {
+    private boolean doScheduleJobArchive(String name, String json) throws IOException, HttpIfaceException {
         URL newUrl = new URL(new URL(url), "/new");
         Log.debug("[" + name + "] scheduling job with '" + newUrl.toExternalForm() + "'");
         HttpResponse response = http.postString(newUrl, json);
@@ -279,7 +279,7 @@ public class AgentConnection {
         return true;
     }
 
-    private String uploadJobArchive(File jobArchive) throws IOException {
+    private String uploadJobArchive(File jobArchive) throws IOException, HttpIfaceException {
         HttpResponse response = http.upload(new URL(new URL(url), "/upload"), jobArchive, "file");
         String responseBody = EntityUtils.toString(response.getEntity());
         JsonObject jsonObject = JsonParser.parseString(responseBody).getAsJsonObject();
@@ -291,7 +291,7 @@ public class AgentConnection {
         return null;
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws IOException, InterruptedException, HttpIfaceException {
         if (args.length < 3) {
             System.out.println("Syntax: agentconnection <agent url> <job zip> <output zip>");
             return;

@@ -9,6 +9,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import testrunner.BaseJob.Status;
+import testrunner.HttpIface.HttpIfaceException;
 
 /**
  * Agent to run at specific worker
@@ -24,7 +25,7 @@ public class LeafAgent extends BaseAgent {
     private long startTime;
     private HttpIface http;
 
-    private LeafAgent(File baseDir) {
+    private LeafAgent(File baseDir) throws HttpIfaceException {
         int nThreads = Runtime.getRuntime().availableProcessors();
         executor = Executors.newFixedThreadPool(nThreads);
         files = new FileStore(new File(baseDir, "store"));

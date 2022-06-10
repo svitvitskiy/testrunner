@@ -13,6 +13,7 @@ import java.util.concurrent.TimeoutException;
 import org.apache.commons.io.FileUtils;
 
 import testrunner.BaseJob.Status;
+import testrunner.HttpIface.HttpIfaceException;
 
 public class RemoteJob {
     private String name;
@@ -91,7 +92,7 @@ public class RemoteJob {
         return resultArchiveRef;
     }
 
-    public File getResultArchive(HttpIface http) throws IOException {
+    public File getResultArchive(HttpIface http) throws IOException, HttpIfaceException {
         if (resultArchive != null)
             return resultArchive;
         File temp = File.createTempFile("stan", "cool");

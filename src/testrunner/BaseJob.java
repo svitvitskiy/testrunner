@@ -3,6 +3,8 @@ package testrunner;
 import java.io.IOException;
 import java.io.InputStream;
 
+import testrunner.HttpIface.HttpIfaceException;
+
 public abstract class BaseJob {
     public static enum Status {
         NEW, PENDING, PROCESSING, DONE, ERROR
@@ -71,7 +73,7 @@ public abstract class BaseJob {
         return priority;
     }
     
-    public abstract InputStream getLog() throws IOException;
+    public abstract InputStream getLog() throws IOException, HttpIfaceException;
 
     protected void updateResultArchiveRef(String resultArchiveRef) {
         this.resultArchiveRef = resultArchiveRef;

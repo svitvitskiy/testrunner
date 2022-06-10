@@ -24,6 +24,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import testrunner.BaseJob.Status;
+import testrunner.HttpIface.HttpIfaceException;
 
 /**
  * This agent is going to balance the tasks between the subordinate agents
@@ -43,7 +44,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
     private GCloudManager gcloudManager;
     private File stateFolder;
 
-    public BalancingAgent(File agentBase, List<String> delegateUrls, String myUrl) {
+    public BalancingAgent(File agentBase, List<String> delegateUrls, String myUrl) throws HttpIfaceException {
         this.myUrl = myUrl;
         int nThreads = Runtime.getRuntime().availableProcessors();
         this.executor = Executors.newScheduledThreadPool(Math.min(64, nThreads * 8));
@@ -59,7 +60,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         this.startTime = System.currentTimeMillis();
     }
     
-    public static BalancingAgent createGCloud(File agentBase) throws IOException, GeneralSecurityException {
+    public static BalancingAgent createGCloud(File agentBase) throws IOException, GeneralSecurityException, HttpIfaceException {
         List<String> delegates = new ArrayList<String>();
         String myIp = GCloudUtil.getGCloudMetaVal(GCloudUtil.META_INSTANCE_IP);
         List<Instance> instances = new GCloudUtil().getAllGCloudInstances();
@@ -78,7 +79,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         return ba;
     }
 
-    private void doBalancing() throws IOException {
+    private void doBalancing() throws IOException, HttpIfaceException {
         List<AgentConnection> delegatesCopy = Util.safeCopy(delegates);
         List<BaseJob> jobsCopy = Util.safeCopy(jobs);
         Log.debug("Trying to balance " + jobsCopy.size() + " jobs.");
@@ -102,7 +103,7 @@ public class BalancingAgent extends BaseAgent implements BaseJob.JobFactory {
         }
     }
 
-    private RemoteJob tryDelegate(BalancingJob job, List<AgentConnection> tmp) throws IOException {
+    private RemoteJob tryDelegate(BalancingJob job, List<AgentConnection> tmp) throws IOException, HttpIfaceException {
         Log.debug("[" + job.getName() + "] Trying to balance");
         int bestCapacity = 0;
         AgentConnection bestDelegate = null;
