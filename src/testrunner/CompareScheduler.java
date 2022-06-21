@@ -29,7 +29,8 @@ import com.google.gson.JsonParser;
 public class CompareScheduler implements TestScheduler {
     private static final int NUM_POINTS = 13;
 
-    private static class JobRequest extends TestScheduler.JobRequest {
+    // Package scope for the tests
+    static class JobRequest extends TestScheduler.JobRequest {
         private String stream;
         private Descriptor descriptor;
         private String ofName;
@@ -98,7 +99,8 @@ public class CompareScheduler implements TestScheduler {
         private String[] diffArgs;
         private Map<String, String> profileArgs;
 
-        private Descriptor(List<String> dataset, String[] encBin, String[] encName, int maxFrames, String profile,
+        // Package scope for the tests
+        Descriptor(List<String> dataset, String[] encBin, String[] encName, int maxFrames, String profile,
                 String codec, String mode, int effort, String commonArgs, String[] diffArgs, Map<String, String> profileArgs) {
             this.dataset = dataset;
             this.encBin = encBin;
@@ -306,7 +308,9 @@ public class CompareScheduler implements TestScheduler {
     @Override
     public void finish(List<TestScheduler.JobResult> results) throws IOException {
         Log.info("Generating report.");
-        generateReport(results, descriptor);
+        File reportFile = new File(baseFldr, "report.html");
+        System.out.println("Saved report to file: " + reportFile.getAbsolutePath());
+        generateReport(results, descriptor, reportFile);
     }
 
     @Override
@@ -331,7 +335,7 @@ public class CompareScheduler implements TestScheduler {
     }
     boolean hadOutput = false;
     private static final String FORMAT_LINE = (char) 27 + "[92m%40s | %2s | %15s | %8s | %6s | %6s | %s" + (char) 27 + "[0m";
-    private static final String ERROR_LINE = (char) 27 + "[91m%40s | %2s | %15s | %s" + (char) 27 + "[0m";
+    private static final String ERROR_LINE = (char) 27 + "[91m%40s | %2s | %15s | %s (%s)" + (char) 27 + "[0m";
     
     private static String capLen(String str, int len) {
         return str.substring(0, Math.min(len, str.length()));
@@ -349,17 +353,17 @@ public class CompareScheduler implements TestScheduler {
             boolean errorFlag = ZipUtils.containsFile(resultArchive, "error.flag");
 
             if (errorFlag) {
-                printJobError(jobRequest, stdout);
+                printJobError(jobRequest, stdout, "remote error");
                 return new JobResult(jobRequest, false, stdout, 0, new double[3]);
             }
 
             if (vmafJson == null) {
-                printJobError(jobRequest, stdout);
+                printJobError(jobRequest, stdout, "no vmaf report");
                 return new JobResult(jobRequest, false, stdout, 0, new double[3]);
             }
 
             if (fileSizeRaw == null || !fileSizeRaw.trim().matches("[0-9]+")) {
-                printJobError(jobRequest, stdout);
+                printJobError(jobRequest, stdout, "no file size");
                 return new JobResult(jobRequest, false, stdout, 0, new double[3]);
             }            
 
@@ -378,7 +382,6 @@ public class CompareScheduler implements TestScheduler {
             
             JobResult result = new JobResult(jobRequest, true, "", fileSize, metrics);
             _results.add(result);
-            generateReport(_results, descriptor);
 
             return result;
         } catch (Exception e) {
@@ -408,16 +411,11 @@ public class CompareScheduler implements TestScheduler {
                 vmaf != null ? Double.parseDouble(vmaf) : 0f, ssim != null ? Double.parseDouble(ssim) : 0f };
     }
     
-//    public static void main(String[] args) throws IOException {
-//        double[] parseMetrics = parseMetrics(FileUtils.readFileToString(new File(args[0])));
-//        System.out.println("cool");
-//    }
-
-    private void printJobError(JobRequest jobRequest, String stdout) {
+    private void printJobError(JobRequest jobRequest, String stdout, String verbose) {
         System.out.println(String.format(ERROR_LINE, capLen(jobRequest.getOfName(), 40),
                 String.valueOf(jobRequest.getPtIdx()),
                 jobRequest.getDescriptor().getEncName()[jobRequest.getEnIdx()],
-                new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date())));
+                new SimpleDateFormat("MM.dd.yyy hh:mm:ss").format(new Date()), verbose));
         System.out.println(tailOfLogFile(stdout));
     }
 
@@ -480,11 +478,10 @@ public class CompareScheduler implements TestScheduler {
             e.printStackTrace(System.out);
         }
     }
-
-    private boolean reportMessagePrinted = false;
-    private void generateReport(List<TestScheduler.JobResult> results, Descriptor descriptor)
+    
+    private static class Dummy {}
+    static void generateReport(List<TestScheduler.JobResult> results, Descriptor descriptor, File reportFile)
             throws IOException {
-        File reportFile = new File(baseFldr, "report.html");
         List<String> strings0 = new ArrayList<String>();
         List<String> strings1 = new ArrayList<String>();
 
@@ -496,7 +493,7 @@ public class CompareScheduler implements TestScheduler {
             String line = "\n{\"filename\":\"" + jobRequest.getOfName() + "\",\"ptIdx\":\"" + jobRequest.getPtIdx()
                     + "\",\"dist\":[\"" + jr.getMetrics()[0] + "\",\"" + jr.getMetrics()[1] + "\",\"" + jr.getMetrics()[2]
                     + "\"],\"rate\":[\"" + jr.getFileSize() + "\",\"" + jr.getFileSize() + "\",\"" + jr.getFileSize()
-                    + "\"]}";
+                    + "\"], \"valid\":"+jr.isValid()+"}";
             if (jobRequest.getEnIdx() == 0)
                 strings0.add(line);
             else
@@ -514,18 +511,13 @@ public class CompareScheduler implements TestScheduler {
             builders[i].append("]}`;");
         }
 
-        try (InputStream is = this.getClass().getClassLoader().getResourceAsStream("testrunner/report.html")) {
+        try (InputStream is = (new Dummy()).getClass().getClassLoader().getResourceAsStream("testrunner/report.html")) {
             String templ = IOUtils.toString(is);
 
             templ = templ.replace("|||BODY0|||", builders[0].toString());
             templ = templ.replace("|||BODY1|||", builders[1].toString());
 
             FileUtils.writeStringToFile(reportFile, templ);
-
-            if (!reportMessagePrinted) {
-                System.out.println("Saved report to file: " + reportFile.getAbsolutePath());
-                reportMessagePrinted = true;
-            }
         }
     }
 

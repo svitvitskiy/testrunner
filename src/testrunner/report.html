@@ -25,6 +25,9 @@
   tr.bottomline {
     font-weight: bold;
   }
+  tr.invalid {
+    background-color: #ffaaaa;
+  }
   body {
     font-family: "Lucida Console", Monaco, monospace;
   }
@@ -120,9 +123,10 @@ function Smoother() {
 
   function bind1(data1, data2, index, el) {
      el.onclick = function() {
+       el.prevClassName=el.className;
        el.className='selected';
        if (prevSelected)
-         prevSelected.className='';
+         prevSelected.className=prevSelected.prevClassName;
        prevSelected = el;
        plot2(data1, data2);
        curData1 = data1;
@@ -130,10 +134,17 @@ function Smoother() {
        selectedListIndex = index;
      }
   }
+  function bind2(data1, data2, key, el) {
+     el.onclick = function() {
+       data1.points = data1.points.filter(el => el.filename != key);
+       data2.points = data2.points.filter(el => el.filename != key);
+       root(data1, data2);
+     }
+  }
 
   function refresh(metric) {
     DIDX = metric;
-    root();
+    super_root();
   }
 
   function findBot(data, value) {
@@ -371,9 +382,14 @@ function Smoother() {
     }
   }
 
-  function root() {
+  function super_root() {
     var data1 = JSON.parse(dataset1);
     var data2 = JSON.parse(dataset2);
+    
+    root(data1, data2);
+  }
+  
+  function root(data1, data2) {
     var content = document.getElementById('content');
     var byFileName1 = groupBy(data1.points, 'filename');
     var byFileName2 = groupBy(data2.points, 'filename');
@@ -381,7 +397,7 @@ function Smoother() {
     str += '<div>Profile: ' + data1.profile + '</div>';
     str += '<div>Frames: ' + data1.maxFrames + '</div>';
     str += '<table>';
-    str += '<tr class="header"><td>Stream</td><td><span style="color: #ffaaaa;">A</span> vs <span style="color: #aaaaff;">B</span>%</td></tr>';
+    str += '<tr class="header"><td>Stream</td><td><span style="color: #ffaaaa;">A</span> vs <span style="color: #aaaaff;">B</span>%</td><td>&nbsp;</td></tr>';
     var sum = 0;
     var count = 0;
     for (key in byFileName1) {
@@ -390,10 +406,17 @@ function Smoother() {
       var diff = calcSeparation(byFileName1[key], byFileName2[key]);
       sum   += diff;
       count += 1;
-      str += '<tr id="clk_' + key + '"><td class="name">' + key + '</td><td class="percent">' + (Math.round(diff*100)/100)  + '%</td></tr>';
+      var valid1 = byFileName1[key].reduce( (allValid, el) => allValid && el.valid, true);
+      var valid2 = byFileName2[key].reduce( (allValid, el) => allValid && el.valid, true);
+      var clz = valid1 && valid2 ? '' : 'class="invalid"';
+      str += '<tr id="clk_' + key + '" ' + clz + '>';
+      str += '<td class="name">' + key + '</td>';
+      str += '<td class="percent">' + (Math.round(diff*100)/100)  + '%</td>';
+      str += '<td><a href="#" id="drop_' + key + '">x</a></td>';
+      str += '</tr>';
     }
     if (count != 0)
-      str += '<tr class="bottomline"><td>Average</td><td class="percent">' + (Math.round((sum/count)*100)/100)  + '%</td></tr>';
+      str += '<tr class="bottomline"><td>Average</td><td class="percent">' + (Math.round((sum/count)*100)/100)  + '%</td><td>&nbsp;</td></tr>';
     str += '</table>';
 
     str += '<div class="container">';
@@ -406,11 +429,15 @@ function Smoother() {
     content.innerHTML = str;
     var index = 0;
     for (key in byFileName1) {
-       var el = document.getElementById('clk_' + key);
-       if (el) {
-         bind1(byFileName1[key], byFileName2[key], index, el);
-         if (index == selectedListIndex) el.onclick();
+       var el0 = document.getElementById('clk_' + key);
+       if (el0) {
+         bind1(byFileName1[key], byFileName2[key], index, el0);
+         if (index == selectedListIndex) el0.onclick();
          ++index;
+       }
+       var el1 = document.getElementById('drop_' + key);
+       if (el1) {
+         bind2(data1, data2, key, el1);
        }
     }
   
@@ -465,5 +492,5 @@ function Smoother() {
 |||BODY0|||
 |||BODY1|||
 </script>
-<script>root();</script>
+<script>super_root();</script>
 </html>
