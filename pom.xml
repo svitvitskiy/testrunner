@@ -64,6 +64,11 @@
 			<artifactId>google-api-services-compute</artifactId>
 			<version>v1-rev235-1.25.0</version>
 		</dependency>
+                <dependency>
+                	<groupId>junit</groupId>
+                	<artifactId>junit</artifactId>
+                	<version>4.12</version>
+                </dependency>
 	</dependencies>
 	<build>
 		<sourceDirectory>src</sourceDirectory>
