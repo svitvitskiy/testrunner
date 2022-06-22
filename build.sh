@@ -12,6 +12,7 @@ java=java
 if test -n "$JAVA_HOME"; then
     java="$JAVA_HOME/bin/java"
 fi
+#java_args="-Xdebug -Xrunjdwp:server=y,transport=dt_socket,address=4000,suspend=n"
 exec "$java" $java_args -jar $MYSELF "$@"
 exit 1 
 STAN

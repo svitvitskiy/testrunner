@@ -30,7 +30,7 @@ public class TestRunner {
 
     public TestRunner(TestScheduler scheduler) throws HttpIfaceException {
         this.scheduler = scheduler;
-        this.http = new HttpIface(1000 /*connectionTimeout*/, 20000 /*socketTimeout*/);
+        this.http = new HttpIface(1000 /* connectionTimeout */, 20000 /* socketTimeout */);
     }
 
     public static void main(String[] args) throws Exception {
@@ -53,6 +53,80 @@ public class TestRunner {
         new TestRunner(scheduler).run(args[0], new File(args[1]));
     }
 
+    public static class JobOverviewThread extends Thread {
+        private List<Job> jobs;
+
+        public JobOverviewThread(List<Job> jobs) {
+            this.jobs = jobs;
+        }
+
+        @Override
+        public void run() {
+            int maxLines = 10;
+            for (int i = 0; i < 10; i++) {
+                System.out.println(((char) 27) + "[K");
+            }
+            System.out.print(((char) 27) + "[10A");
+
+            boolean allDone = false;
+            while (!allDone) {
+                int lines = 0;
+                allDone = true;
+                for (Job job : jobs) {
+                    if (job.switchedState()) {
+                        if (job.state == JobState.ERROR) {
+                            ++maxLines;
+                        }
+                        if (lines < maxLines && job.state != JobState.DONE) {
+                            System.out.print(((char) 27) + "[K");
+                            System.out.print(((char) 27) + "[" + stateToColor(job.state) + "m");
+                            System.out.println("  " + job.getDescription()
+                                    + (job.extraInfo != null ? "(" + job.extraInfo + ")" : ""));
+                            ++lines;
+                        }
+                    }
+                    allDone &= job.isDone();
+                }
+                for (int i = lines; i < maxLines; i++) {
+                    System.out.println(((char) 27) + "[K");
+                }
+                System.out.print(((char) 27) + "[" + maxLines + "A");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                }
+            }
+            for (int i = 0; i < maxLines; i++) {
+                System.out.println(((char) 27) + "[K");
+            }
+            System.out.print(((char) 27) + "[" + maxLines + "A");
+            System.out.print(((char) 27) + "[0m");
+        }
+
+        private int stateToColor(JobState state) {
+            switch (state) {
+            case INIT:
+                return 96;
+            case RETRYING:
+                return 95;
+            case RETRY:
+                return 95;
+            case READY:
+                return 93;
+            case RUNNING:
+                return 92;
+            case PROCESSED:
+                return 32;
+            case DONE:
+                return 32;
+            case ERROR:
+                return 31;
+            default:
+                return 0;
+            }
+        }
+    };
+
     public void run(String agentUrl, File baseFldr) throws Exception {
         int nThreads = Math.min(64, Runtime.getRuntime().availableProcessors() * 8);
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(nThreads);
@@ -61,19 +135,35 @@ public class TestRunner {
 
         AgentConnection agent = new AgentConnection(agentUrl, true, executor2, http);
         agent.scheduleStatusCheck();
-        
+
         scheduler.init(baseFldr);
 
-        List<Future<JobResult>> futures = new ArrayList<Future<JobResult>>();
-        scheduleJobs(agent, scheduler, baseFldr, executor, futures);
+        List<Job> jobs = scheduleJobs(agent, scheduler, baseFldr, executor);
+        new JobOverviewThread(jobs).start();
 
+        // Main loop
         Log.info("Waiting for the jobs.");
-        // Wait for everything to be processed
         List<JobResult> results = new ArrayList<JobResult>();
-        for (Future<JobResult> job : futures) {
-            JobResult e = job.get();
-            if (e != null)
-                results.add(e);
+        boolean allDone = false;
+        while (!allDone) {
+            allDone = true;
+            for (Job job : jobs) {
+                //if (job.state == JobState.READY) job.ready = true;
+                if (!job.isDone() && job.isReady()) {
+                    job.iterate(executor);
+                }
+
+                allDone &= job.isDone();
+            }
+
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+            }
+        }
+
+        for (Job job : jobs) {
+            results.add(job.getResult());
         }
 
         agent.shutdown();
@@ -85,8 +175,129 @@ public class TestRunner {
         executor.awaitTermination(Integer.MAX_VALUE, TimeUnit.SECONDS);
     }
 
-    private void scheduleJobs(AgentConnection agent, TestScheduler scheduler, File baseFldr,
-            ScheduledExecutorService executor, List<Future<JobResult>> results) throws IOException {
+    private enum JobState {
+        INIT, RETRYING, RETRY, READY, RUNNING, PROCESSED, DONE, ERROR
+    };
+
+    private class Job implements Runnable {
+        AgentConnection agent;
+        RemoteJob rj;
+        JobRequest req;
+        volatile JobState state;
+        volatile boolean ready;
+        long timeWhenReady;
+        int retries;
+        File resultsFldr;
+        String errorDesc;
+        private JobResult result;
+        private JobState savedState;
+        private String extraInfo;
+
+        public Job(AgentConnection agent, JobRequest jobRequest, File resultsFldr) {
+            this.agent = agent;
+            this.req = jobRequest;
+            this.resultsFldr = resultsFldr;
+            this.ready = true;
+            this.state = JobState.INIT;
+            this.timeWhenReady = 0;
+        }
+
+        public boolean switchedState() {
+            boolean result = savedState != state;
+            savedState = state;
+            return result;
+        }
+
+        public String getDescription() {
+            return req.getJobName() + ":" + state;
+        }
+
+        public JobResult getResult() {
+            return result;
+        }
+
+        @Override
+        public synchronized void run() {
+            try {
+                switch (state) {
+                case INIT:
+                    scheduler.createJobArchive(req);
+                    state = JobState.READY;
+                    break;
+                case RETRY:
+                    if (System.currentTimeMillis() > timeWhenReady) {
+                        extraInfo = null;
+                        state = JobState.READY;
+                    }
+                    break;
+                case RETRYING:
+                    if (retries > MAX_RETRIES) {
+                        extraInfo = "Couldn't schedule a job at all after " + MAX_RETRIES + " retries.";
+                        state = JobState.ERROR;
+                    } else {
+                        long retryTime = (long) (Math.random() * 10000);
+                        timeWhenReady = System.currentTimeMillis() + retryTime;
+                        ++retries;
+                        extraInfo = errorDesc + ", retrying in " + retryTime + "ms.";
+                        state = JobState.RETRY;
+                    }
+                    break;
+                case READY:
+                    try {
+                        rj = agent.scheduleJob(req.getJobName(), req.getJobArchive(), req.getPriority());
+
+                        if (rj == null) {
+                            state = JobState.ERROR;
+                        } else if (rj == RemoteJob.WAIT) {
+                            errorDesc = "remote agent is too busy";
+                            state = JobState.RETRYING;
+                        } else {
+                            Log.info("[" + req.getJobName() + "] Scheduled.");
+                            state = JobState.RUNNING;
+                        }
+                    } catch (IOException | HttpIfaceException e1) {
+                        errorDesc = "couldn't schedule with remote agent (" + e1.getMessage() + ")";
+                        state = JobState.RETRYING;
+                    }
+                    break;
+                case RUNNING:
+                    state = rj.isFinished() ? JobState.PROCESSED : JobState.RUNNING;
+                    break;
+                case PROCESSED:
+                    try {
+                        result = processJobResult(req, rj, resultsFldr);
+                        state = JobState.DONE;
+                    } catch (Exception e) {
+                        errorDesc = "couldn't process job result (" + e.getMessage() + "), rerunning the whole job";
+                        state = JobState.RETRYING;
+                    }
+                    break;
+                case ERROR:
+                    break;
+                case DONE:
+                    break;
+                }
+            } finally {
+                ready = true;
+            }
+        }
+
+        public boolean isReady() {
+            return ready;
+        }
+
+        public boolean isDone() {
+            return state == JobState.DONE || state == JobState.ERROR;
+        }
+
+        public void iterate(ScheduledExecutorService executor) {
+            ready = false;
+            executor.execute(this);
+        }
+    }
+
+    private List<Job> scheduleJobs(AgentConnection agent, TestScheduler scheduler, File baseFldr,
+            ScheduledExecutorService executor) throws IOException {
         File requestsFldr = new File(baseFldr, "requests");
         File resultsFldr = new File(baseFldr, "results");
         if (requestsFldr.exists())
@@ -96,87 +307,33 @@ public class TestRunner {
         requestsFldr.mkdirs();
         resultsFldr.mkdirs();
 
+        List<Job> jobs = new ArrayList<Job>();
         List<JobRequest> requests = scheduler.generateJobRequests(requestsFldr);
         for (JobRequest jobRequest : requests) {
-            Future<JobResult> future = Util.compoundFuture5(executor.submit(() -> {
-                scheduler.createJobArchive(jobRequest);
-                Callable<Future<Future<Future<JobResult>>>> task = new Callable<Future<Future<Future<JobResult>>>>() {
-                    int retries0 = 0;
-
-                    public Future<Future<Future<JobResult>>> call() {
-                        try {
-                            RemoteJob rj = agent.scheduleJob(jobRequest.getJobName(), jobRequest.getJobArchive(), jobRequest.getPriority());
-                            if (rj == null) {
-                                return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
-                            } else if (rj == RemoteJob.WAIT) {
-                                int retryTime = (int) (Math.random() * 10000);
-                                return Util.compoundFuture2(executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
-                            }
-                            Log.info("[" + jobRequest.getJobName() + "] Scheduled.");
-                            return rj.onFinished(() -> {
-                                Callable<Future<JobResult>> task2 = new Callable<Future<JobResult>>() {
-                                    int retries1 = 0;
-
-                                    public Future<JobResult> call() {
-                                        try {
-                                            return Util.dummyFuture(processJobResult(jobRequest, rj, resultsFldr));
-                                        } catch (Exception e) {
-                                            if (retries1 > MAX_RETRIES) {
-                                                Log.error("[" + jobRequest.getJobName()
-                                                        + "] Couldn't schedule a job at all after " + MAX_RETRIES
-                                                        + " retries.");
-                                                return Util.dummyFuture(new JobResult(jobRequest, false, ""));
-                                            }
-                                            ++retries1;
-                                            int retryTime = (int) (Math.random() * 10000);
-                                            Log.warn("[" + jobRequest.getJobName()
-                                                    + "] Couldn't get a job result, retrying in " + retryTime + "ms.");
-                                            return Util.compoundFuture2(
-                                                    executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
-                                        }
-                                    }
-                                };
-                                return executor.submit(task2);
-                            });
-                        } catch (Exception e) {
-                            if (retries0 > MAX_RETRIES) {
-                                Log.error("[" + jobRequest.getJobName() + "] Couldn't schedule a job at all after "
-                                        + MAX_RETRIES + " retries.");
-                                return Util.dummyFuture3(new JobResult(jobRequest, false, ""));
-                            }
-                            Log.debug(e);
-                            ++retries0;
-                            int retryTime = (int) (Math.random() * 10000);
-                            Log.warn("[" + jobRequest.getJobName() + "] Couldn't start a job, retrying in " + retryTime
-                                    + "ms.");
-                            return Util.compoundFuture2(executor.schedule(this, retryTime, TimeUnit.MILLISECONDS));
-                        }
-                    }
-                };
-                return executor.submit(task);
-            }));
-            results.add(future);
+            jobs.add(new Job(agent, jobRequest, resultsFldr));
         }
+        return jobs;
     }
 
-    private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr) throws IOException, HttpIfaceException {
+    private JobResult processJobResult(JobRequest jobRequest, RemoteJob job, File resultsFldr)
+            throws IOException, HttpIfaceException {
         if (job == null)
             return new JobResult(jobRequest, false, "Remote job was null");
         if (job.getStatus() == BaseJob.Status.DONE) {
             Log.info("[" + jobRequest.getJobName() + "] Processing result.");
             File resultArchive = job.getResultArchive(http);
-    
+
             if (resultArchive == null)
                 return new JobResult(jobRequest, false, "Result archive was null");
-    
+
             File dest = new File(resultsFldr, jobRequest.getJobName() + ".zip");
             resultArchive.renameTo(dest);
             resultArchive = dest;
-    
+
             JobResult processResult = scheduler.processResult(jobRequest, resultArchive);
             if (processResult.isValid()) {
-              // everything went well, nothing to see there
-              jobRequest.getJobArchive().delete();
+                // everything went well, nothing to see there
+                jobRequest.getJobArchive().delete();
             }
             return processResult;
         } else {

@@ -89,7 +89,7 @@ public class AgentConnection {
                     online = false;
                     ++offlineCounter;
                     if (!(e instanceof HttpHostConnectException)) {
-                        e.printStackTrace(System.out);
+                        Log.error(e);
                     }
                 }
             }
@@ -115,11 +115,13 @@ public class AgentConnection {
         Set<String> updated = new HashSet<String>();
 
         try (InputStream is = http.openUrlStream(url2)) {
+            JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
+            
             if (online == false) {
                 connectionUp();
             }
             online = true;
-            JsonObject jsonObject = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
+            
             availableCPU = jsonObject.get("availableCPU").getAsInt();
             JsonElement jsonElement = jsonObject.get("jobs");
             int newTotalJobs = 0, newTotalRunningJobs = 0;
@@ -161,12 +163,14 @@ public class AgentConnection {
     private void connectionUp() {
         offlineCounter = 0;
         events.add(new Event(EventType.UP, System.currentTimeMillis()));
+        System.out.print(((char) 27) + "[K");
         System.out.println((char) 27 + "[92m+ " + url + " UP" + (char) 27 + "[0m");
     }
 
     private void connectiondDown() {
         offlineCounter = 0;
         events.add(new Event(EventType.DOWN, System.currentTimeMillis()));
+        System.out.print(((char) 27) + "[K");
         System.out.println((char) 27 + "[95m+ " + url + " DOWN" + (char) 27 + "[0m");
     }
 
@@ -286,7 +290,7 @@ public class AgentConnection {
         if (response.getStatusLine().getStatusCode() == 200) {
             return jsonObject.get("id").getAsString();
         } else {
-            System.out.println(jsonObject.get("message").getAsString());
+            Log.error(jsonObject.get("message").getAsString());
         }
         return null;
     }

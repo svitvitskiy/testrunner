@@ -41,9 +41,13 @@ public class RemoteJob {
     }
 
     public synchronized void waitFinished() throws InterruptedException {
-        while (this.status != BaseJob.Status.DONE && this.status != BaseJob.Status.ERROR) {
+        while (isFinished()) {
             this.wait();
         }
+    }
+
+    public boolean isFinished() {
+        return this.status == BaseJob.Status.DONE || this.status == BaseJob.Status.ERROR;
     }
 
     public LeafJob.Status getStatus() {

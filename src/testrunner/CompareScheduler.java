@@ -386,7 +386,6 @@ public class CompareScheduler implements TestScheduler {
             return result;
         } catch (Exception e) {
             Log.error("[" + jobRequest.getJobName() + "] Couldn't process the job result.");
-            e.printStackTrace(System.out);
             return new JobResult(jobRequest, false, "Got exception: " + e.getMessage(), 0, new double[3]);
         }
     }
@@ -475,7 +474,6 @@ public class CompareScheduler implements TestScheduler {
             Log.info("[" + jobRequest.getJobName() + "] Created job archive.");
         } catch (IOException e) {
             Log.error("Could not create a job archive for job '" + jobRequest.getJobName() + "'.");
-            e.printStackTrace(System.out);
         }
     }
     

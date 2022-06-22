@@ -1,7 +1,7 @@
 package testrunner;
 
 public class Log {
-    private static int logLevel = 1;
+    private static int logLevel = -1;
 
     private static String PREFIX_ERROR = (char) 27 + "[91mERROR: ";
     private static String PREFIX_WARN = (char) 27 + "[95mWARN: ";
